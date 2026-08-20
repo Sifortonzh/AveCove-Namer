@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "avecove-namer"
+version = "0.1.0"
+description = "Safe, reviewable media naming for OpenList, Emby, Infuse and SenPlayer."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Sifortonzh" }]
+keywords = ["openlist", "emby", "infuse", "senplayer", "tmdb", "media-renamer"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Multimedia :: Video",
+]
+dependencies = []
+
+[project.scripts]
+avecove-namer = "avecove_namer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

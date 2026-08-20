@@ -1,0 +1,13 @@
+services:
+  namer:
+    build: .
+    image: avecove-namer:dev
+    environment:
+      OPENLIST_URL: https://openlist.example.com
+      OPENLIST_TOKEN_FILE: /run/secrets/openlist.token
+    volumes:
+      - ./work:/work
+      - ./secrets/openlist.token:/run/secrets/openlist.token:ro
+    mem_limit: 192m
+    cpus: 0.25
+    command: ["--help"]
