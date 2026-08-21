@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+
+app_root="${AVECOVE_NAMER_ROOT:-/opt/docker/avecove-namer/current}"
+export PYTHONPATH="$app_root/src${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m avecove_namer "$@"
