@@ -28,7 +28,7 @@ Modern.Family.2009.S01E01.1080p.BluRay.x265.DTS.zh-CN.sup
 
 ## 快速开始
 
-需要 Python 3.11 或更高版本。
+需要 Python 3.10 或更高版本。
 
 ```bash
 python3 -m venv .venv

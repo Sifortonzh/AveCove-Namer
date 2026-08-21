@@ -30,7 +30,7 @@ The series year is included, episode titles are omitted, and useful release meta
 
 ## Quick start
 
-Python 3.11 or newer is required.
+Python 3.10 or newer is required.
 
 ```bash
 python3 -m venv .venv
