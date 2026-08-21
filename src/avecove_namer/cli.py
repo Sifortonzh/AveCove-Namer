@@ -76,6 +76,16 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--path", required=True)
     plan.add_argument("--title", help="Verified canonical title override")
     plan.add_argument("--year", type=int, help="Verified release or first-air year override")
+    plan.add_argument("--tmdb-id", type=int, help="Verified TMDB identifier")
+    plan.add_argument("--tmdb-token-file", help="0600 file containing a TMDB read token or v3 API key")
+    plan.add_argument("--media-kind", choices=("tv", "movie"), default="movie")
+    plan.add_argument(
+        "--title-style",
+        choices=("auto", "english", "chinese", "original", "bilingual"),
+        default="auto",
+        help="TMDB title language policy; auto uses Chinese for Chinese-origin media and English otherwise",
+    )
+    plan.add_argument("--rename-root-folder", action="store_true", help="Rename the selected movie or series folder with year and TMDB ID")
     plan.add_argument("--include-episode-title", action="store_true", help="Reserved for a future TMDB episode-title resolver")
     plan.add_argument("--subtitle-language-default", default="zh-CN")
     plan.add_argument("--output", required=True)
@@ -126,9 +136,38 @@ def run(args: argparse.Namespace) -> int:
         if args.include_episode_title:
             raise ValueError("Episode titles are intentionally disabled in v0.1; AveCove's default is title + year + SxxEyy")
         backend = backend_from_args(args)
-        entries = backend.scan(args.path)
+        plan_root = str(Path(args.path).expanduser().resolve()) if backend.name == "local" else "/" + args.path.strip("/")
+        resolved = None
+        if args.tmdb_id:
+            if not args.tmdb_token_file:
+                raise ValueError("--tmdb-id requires --tmdb-token-file")
+            resolved = TMDBClient(secure_read(args.tmdb_token_file)).resolve_title(
+                args.tmdb_id,
+                args.media_kind,
+                args.title_style,
+            )
+        if args.rename_root_folder and not args.tmdb_id:
+            raise ValueError("--rename-root-folder requires --tmdb-id")
+        title = args.title or (str(resolved["title"]) if resolved else None)
+        year = args.year or (int(resolved["year"]) if resolved and resolved.get("year") else None)
+        primary_language = str(resolved["primary_language"]) if resolved else None
+        entries = backend.scan(plan_root)
         policy = NamingPolicy(subtitle_language_default=args.subtitle_language_default)
-        rename_plan = make_plan(entries, args.path, backend.name, policy, args.title, args.year)
+        rename_plan = make_plan(
+            entries,
+            plan_root,
+            backend.name,
+            policy,
+            title,
+            year,
+            args.rename_root_folder,
+            args.tmdb_id,
+            primary_language,
+        )
+        for operation in rename_plan.operations:
+            if operation.kind == "rename_directory" and backend.exists(operation.target):
+                rename_plan.conflicts.append(f"Target exists: {operation.target}")
+        rename_plan.conflicts = sorted(set(rename_plan.conflicts))
         write_plan(rename_plan, args.output, args.csv)
         print(preview(rename_plan))
         print(f"Plan written: {args.output}")

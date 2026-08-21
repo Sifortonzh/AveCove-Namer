@@ -28,6 +28,7 @@ TECHNICAL_START_RE = re.compile(
     r"aac|flac|opus|10bit|8bit"
     r")(?:$|[ ._-])"
 )
+CJK_START_RE = re.compile(r"^[\s\[({]*[\u3400-\u9fff]")
 
 CANONICAL_TECH = {
     "4k": "2160p",
@@ -75,6 +76,30 @@ def clean_component(value: str) -> str:
     value = re.sub(r"[\\/:|<>*?\"']", ".", value)
     value = re.sub(r"[\s._-]+", ".", value)
     return value.strip(".")
+
+
+def clean_folder_title(value: str) -> str:
+    value = unicodedata.normalize("NFKC", value)
+    value = TMDB_SUFFIX_RE.sub("", value)
+    value = re.sub(r"[\\/:|<>*?\"']", " ", value)
+    value = re.sub(r"\bVol\.\s+(\d+)", r"Vol.\1", value, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", value).strip(" .")
+
+
+def starts_with_chinese(value: str) -> bool:
+    return bool(CJK_START_RE.search(unicodedata.normalize("NFKC", value)))
+
+
+def build_root_folder_name(
+    title: str,
+    year: int,
+    tmdb_id: int,
+    primary_language: str | None = None,
+) -> str:
+    resolved_title = clean_folder_title(title)
+    chinese = primary_language == "zh" if primary_language else starts_with_chinese(resolved_title)
+    dated_title = f"{resolved_title}（{year}）" if chinese else f"{resolved_title} ({year})"
+    return f"{dated_title} {{tmdb={tmdb_id}}}"
 
 
 def display_title(value: str) -> str:
@@ -202,4 +227,3 @@ def build_subtitle_name(video_target: str, subtitle_name: str, policy: NamingPol
     subtitle_extension = extension_of(subtitle_name)
     language = subtitle_language_suffix(subtitle_name, policy.subtitle_language_default)
     return f"{video_stem}.{language}{subtitle_extension}"
-

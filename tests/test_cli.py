@@ -51,7 +51,7 @@ class CliIntegrationTests(unittest.TestCase):
                             str(journal_path),
                             "--execute",
                             "--confirm-root",
-                            str(root.parent),
+                            str(root.parent.resolve()),
                             "--confirm-count",
                             "2",
                         ]

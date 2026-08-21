@@ -11,6 +11,7 @@ from .naming import (
     NamingPolicy,
     SUBTITLE_EXTENSIONS,
     VIDEO_EXTENSIONS,
+    build_root_folder_name,
     build_subtitle_name,
     build_video_name,
     extension_of,
@@ -41,6 +42,9 @@ def make_plan(
     policy: NamingPolicy,
     title_override: str | None = None,
     year_override: int | None = None,
+    rename_root_folder: bool = False,
+    tmdb_id: int | None = None,
+    primary_language: str | None = None,
 ) -> RenamePlan:
     plan = RenamePlan(
         version=1,
@@ -92,6 +96,26 @@ def make_plan(
         if parsed.kind == "episode":
             episode_targets[(entry.parent, int(parsed.season), int(parsed.episode))] = target
 
+    if rename_root_folder:
+        root_path = PurePosixPath(root.rstrip("/"))
+        if root_path == PurePosixPath("/"):
+            plan.conflicts.append("Refusing to rename the filesystem root")
+        elif not title_override or not year_override or not tmdb_id:
+            plan.conflicts.append("Root folder rename requires a verified title, year, and TMDB ID")
+        else:
+            folder_name = build_root_folder_name(title_override, year_override, tmdb_id, primary_language)
+            target_root = str(root_path.parent / folder_name)
+            if target_root != str(root_path):
+                plan.operations.append(
+                    RenameOperation(
+                        source=str(root_path),
+                        target=target_root,
+                        kind="rename_directory",
+                        reason="origin_aware_tmdb_root_folder",
+                        confidence=1.0,
+                    )
+                )
+
     for parent, siblings in by_parent.items():
         for entry in siblings:
             extension = extension_of(entry.name)
@@ -131,7 +155,13 @@ def make_plan(
         if len(source_list) > 1:
             plan.conflicts.append(f"Duplicate target {target}: {', '.join(source_list)}")
 
-    plan.operations.sort(key=lambda operation: (operation.source.casefold(), operation.kind))
+    plan.operations.sort(
+        key=lambda operation: (
+            operation.kind == "rename_directory",
+            operation.source.casefold(),
+            operation.kind,
+        )
+    )
     plan.conflicts = sorted(set(plan.conflicts))
     return plan
 

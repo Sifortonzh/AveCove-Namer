@@ -4,7 +4,7 @@
 
 [English](README.md)
 
-> 当前版本：v0.1.0 alpha。请先选择一个小目录试运行，并在执行前逐条审核计划。
+> 当前版本：v0.1.1 alpha。请先选择一个小目录试运行，并在执行前逐条审核计划。
 
 AveCove Namer 是独立实现的云盘影视整理工具。默认剧集规则把稳定识别放在首位：加入剧集首播年份、省略非必要的单集标题，同时保留画质、来源、编码、音轨等有效封装信息。
 
@@ -17,6 +17,7 @@ Modern.Family.2009.S01E01.1080p.BluRay.x265.DTS.zh-CN.sup
 
 - 支持本地目录和 OpenList。
 - 为剧集和电影补充年份并规范名称。
+- 按作品来源选择中英文目录标题，并写入 Emby 可识别的 TMDB ID 标签。
 - 保留画质、片源、视频编码、音轨等发布信息。
 - 外挂字幕与视频完整主文件名配对。
 - 先生成只读 JSON 计划，可同时导出 CSV 审核表。
@@ -112,6 +113,22 @@ avecove-namer plan \
 ```
 
 OpenList 的正式执行也必须经过相同的预览与精确确认。Token 文件权限必须为 `0600`。
+
+通过 TMDB 自动选择标题语言，并把作品上一级目录加入审核计划：
+
+```bash
+avecove-namer plan \
+  --backend openlist \
+  --openlist-url "https://openlist.example.com" \
+  --openlist-token-file "$HOME/.config/avecove-namer/openlist.token" \
+  --path "/Baidu/Movies/Kill Bill 1" \
+  --tmdb-id 24 \
+  --tmdb-token-file "$HOME/.config/avecove-namer/tmdb.token" \
+  --media-kind movie \
+  --title-style auto \
+  --rename-root-folder \
+  --output work/kill-bill.json
+```
 
 ## 默认命名规则
 

@@ -58,6 +58,32 @@ class ExecutorTests(unittest.TestCase):
             with self.assertRaises(ExecutionError):
                 execute_plan(plan, backend, str(journal), execute=True, confirm_root=str(root), confirm_count=1)
 
+    def test_media_and_root_folder_round_trip(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "Kill Bill 1"
+            root.mkdir()
+            original_video = root / "杀死比尔.2003.2160p.REMUX.DV.mkv"
+            original_video.touch()
+            backend = LocalBackend()
+            plan = make_plan(
+                backend.scan(str(root)),
+                str(root),
+                "local",
+                NamingPolicy(),
+                "Kill Bill: Vol. 1",
+                2003,
+                True,
+                24,
+                "en",
+            )
+            journal = Path(temp) / "folder-rollback.jsonl"
+            execute_plan(plan, backend, str(journal), True, str(root), 2)
+            target_root = Path(temp) / "Kill Bill Vol.1 (2003) {tmdb=24}"
+            self.assertTrue((target_root / "Kill.Bill.Vol.1.2003.2160p.REMUX.DV.mkv").exists())
+
+            rollback(backend, str(journal), execute=True)
+            self.assertTrue(original_video.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

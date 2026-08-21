@@ -63,3 +63,51 @@ class TMDBClient:
                 }
             )
         return output
+
+    def details(self, tmdb_id: int, kind: str, language: str) -> dict[str, object]:
+        if kind not in {"tv", "movie"}:
+            raise TMDBError("TMDB kind must be tv or movie")
+        return self._get(f"/{kind}/{tmdb_id}", {"language": language})
+
+    def resolve_title(self, tmdb_id: int, kind: str, style: str = "auto") -> dict[str, object]:
+        if style not in {"auto", "english", "chinese", "original", "bilingual"}:
+            raise TMDBError("Unsupported TMDB title style")
+        chinese_details = self.details(tmdb_id, kind, "zh-CN")
+        english_details = self.details(tmdb_id, kind, "en-US")
+        title_key = "name" if kind == "tv" else "title"
+        original_key = "original_name" if kind == "tv" else "original_title"
+        date_key = "first_air_date" if kind == "tv" else "release_date"
+
+        original_language = str(english_details.get("original_language") or chinese_details.get("original_language") or "")
+        original_title = str(english_details.get(original_key) or chinese_details.get(original_key) or "").strip()
+        english_title = str(english_details.get(title_key) or original_title).strip()
+        chinese_title = str(chinese_details.get(title_key) or original_title).strip()
+        chinese_origin = original_language.casefold() in {"zh", "cn", "yue"}
+
+        if style == "english":
+            selected_title, primary_language = english_title, "en"
+        elif style == "chinese":
+            selected_title, primary_language = chinese_title, "zh"
+        elif style == "original":
+            selected_title = original_title
+            primary_language = "zh" if chinese_origin else "en"
+        else:
+            primary = chinese_title if chinese_origin else english_title
+            secondary = english_title if chinese_origin else chinese_title
+            selected_title = primary
+            primary_language = "zh" if chinese_origin else "en"
+            if style == "bilingual" and secondary and secondary.casefold() != primary.casefold():
+                selected_title = f"{primary} {secondary}"
+
+        date = english_details.get(date_key) or chinese_details.get(date_key)
+        year = int(str(date)[:4]) if date and len(str(date)) >= 4 else None
+        return {
+            "id": tmdb_id,
+            "title": selected_title,
+            "year": year,
+            "primary_language": primary_language,
+            "original_language": original_language,
+            "english_title": english_title,
+            "chinese_title": chinese_title,
+            "original_title": original_title,
+        }

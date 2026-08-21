@@ -28,6 +28,17 @@ Movie.Title.2024.2160p.BluRay.REMUX.DV.HDR.HEVC.TrueHD.Atmos.mkv
 
 The title, release year, and recognized technical/release tail are retained.
 
+## Title language policy
+
+The recommended library policy is origin-aware:
+
+- Non-Chinese productions use an English-first folder: `Kill Bill Vol.1 (2003) {tmdb=24}`.
+- Mainland Chinese, Hong Kong, and Taiwanese productions use attached full-width parentheses: `漫长的季节（2023） {tmdb=205272}`.
+- When both languages are useful, the punctuation follows the first, primary language: `Kill Bill Vol.1 杀死比尔 (2003) {tmdb=24}` or `漫长的季节 The Long Season（2023） {tmdb=205272}`.
+- Media filenames retain one canonical primary title, for example `Kill.Bill.Vol.1.2003...` or `漫长的季节.2023.S01E01...`.
+
+This keeps filenames short and predictable while giving Emby a strong TMDB identity in the folder. `--tmdb-id` with `--title-style auto` selects Chinese for Chinese-origin media and English otherwise. Folder renaming remains explicit through `--rename-root-folder`.
+
 ## Sidecar subtitles
 
 Subtitle names match the complete resulting video stem, followed by a language tag and subtitle extension:

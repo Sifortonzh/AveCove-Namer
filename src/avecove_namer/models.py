@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 
 MediaKind = Literal["movie", "episode", "subtitle", "other"]
-OperationKind = Literal["rename_video", "rename_subtitle"]
+OperationKind = Literal["rename_video", "rename_subtitle", "rename_directory"]
 
 
 @dataclass(frozen=True)
@@ -86,4 +86,3 @@ class RenamePlan:
             conflicts=list(data.get("conflicts", [])),
             skipped=list(data.get("skipped", [])),
         )
-

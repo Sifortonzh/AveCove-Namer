@@ -36,7 +36,23 @@ class PlannerTests(unittest.TestCase):
         plan = make_plan(entries, root, "openlist", NamingPolicy())
         self.assertTrue(any("Target exists" in conflict for conflict in plan.conflicts))
 
+    def test_root_folder_rename_is_planned_after_media_files(self):
+        root = "/Movies/Kill Bill 1"
+        entries = [Entry(f"{root}/杀死比尔.2003.2160p.REMUX.DV.mkv")]
+        plan = make_plan(
+            entries,
+            root,
+            "openlist",
+            NamingPolicy(),
+            "Kill Bill: Vol. 1",
+            2003,
+            True,
+            24,
+            "en",
+        )
+        self.assertEqual([operation.kind for operation in plan.operations], ["rename_video", "rename_directory"])
+        self.assertEqual(plan.operations[-1].target, "/Movies/Kill Bill Vol.1 (2003) {tmdb=24}")
+
 
 if __name__ == "__main__":
     unittest.main()
-

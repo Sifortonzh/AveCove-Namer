@@ -1,6 +1,6 @@
 import unittest
 
-from avecove_namer.naming import NamingPolicy, build_subtitle_name, build_video_name, parse_media_name
+from avecove_namer.naming import NamingPolicy, build_root_folder_name, build_subtitle_name, build_video_name, parse_media_name
 
 
 class NamingTests(unittest.TestCase):
@@ -29,6 +29,39 @@ class NamingTests(unittest.TestCase):
             "The.Godfather.1972.2160p.UHD.BluRay.REMUX.DV.HDR.mkv",
         )
 
+    def test_english_title_can_lead_a_foreign_movie(self):
+        parsed = parse_media_name("Source.2003.2160p.REMUX.DV.mkv")
+        self.assertEqual(
+            build_video_name(parsed, NamingPolicy(), "Kill Bill", 2003),
+            "Kill.Bill.2003.2160p.REMUX.DV.mkv",
+        )
+
+    def test_chinese_title_can_lead_a_chinese_series(self):
+        parsed = parse_media_name("Source.S01E01.1080p.WEB-DL.mkv")
+        self.assertEqual(
+            build_video_name(parsed, NamingPolicy(), "漫长的季节", 2023),
+            "漫长的季节.2023.S01E01.1080p.WEB-DL.mkv",
+        )
+
+    def test_bilingual_title_is_supported(self):
+        parsed = parse_media_name("Source.2003.2160p.REMUX.DV.mkv")
+        self.assertEqual(
+            build_video_name(parsed, NamingPolicy(), "Kill Bill 杀死比尔", 2003),
+            "Kill.Bill.杀死比尔.2003.2160p.REMUX.DV.mkv",
+        )
+
+    def test_english_folder_uses_spaced_ascii_parentheses(self):
+        self.assertEqual(
+            build_root_folder_name("Kill Bill: Vol. 1", 2003, 24, "en"),
+            "Kill Bill Vol.1 (2003) {tmdb=24}",
+        )
+
+    def test_chinese_folder_uses_attached_full_width_parentheses(self):
+        self.assertEqual(
+            build_root_folder_name("漫长的季节", 2023, 205272, "zh"),
+            "漫长的季节（2023） {tmdb=205272}",
+        )
+
     def test_subtitle_matches_complete_video_stem(self):
         self.assertEqual(
             build_subtitle_name(
@@ -42,4 +75,3 @@ class NamingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

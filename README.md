@@ -4,7 +4,7 @@ Safe, reviewable media naming for OpenList, Emby, Infuse, and SenPlayer.
 
 [简体中文](README.zh-CN.md)
 
-> Status: v0.1.0 alpha. Start with a small canary folder and review every plan before execution.
+> Status: v0.1.1 alpha. Start with a small canary folder and review every plan before execution.
 
 AveCove Namer is an independent, clean-room media naming tool built for cloud-drive libraries. Its default TV rule deliberately prioritizes reliable library matching over episode-title decoration:
 
@@ -19,6 +19,7 @@ The series year is included, episode titles are omitted, and useful release meta
 
 - Local filesystem and OpenList backends.
 - Year-aware TV and movie naming.
+- Origin-aware movie and series folder naming with Emby TMDB ID tags.
 - Technical/release metadata preservation.
 - Sidecar subtitle pairing with a full video-stem match.
 - Read-only JSON and optional CSV plans.
@@ -114,6 +115,22 @@ avecove-namer plan \
 ```
 
 OpenList execution uses the same preview and exact-confirmation flow as the local backend. Token files must have `0600` permissions.
+
+Resolve TMDB metadata, select the title language automatically, and include the root folder in the reviewed plan:
+
+```bash
+avecove-namer plan \
+  --backend openlist \
+  --openlist-url "https://openlist.example.com" \
+  --openlist-token-file "$HOME/.config/avecove-namer/openlist.token" \
+  --path "/Baidu/Movies/Kill Bill 1" \
+  --tmdb-id 24 \
+  --tmdb-token-file "$HOME/.config/avecove-namer/tmdb.token" \
+  --media-kind movie \
+  --title-style auto \
+  --rename-root-folder \
+  --output work/kill-bill.json
+```
 
 ## Naming policy
 
