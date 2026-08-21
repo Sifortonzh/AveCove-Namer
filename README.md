@@ -28,6 +28,8 @@ The series year is included, episode titles are omitted, and useful release meta
 - Read-only TMDB title search as a verification aid.
 - No database, background scheduler, or resident service.
 
+TMDB search accepts either an API Read Access Token or a v3 API Key stored in a `0600` credential file.
+
 ## Quick start
 
 Python 3.10 or newer is required.

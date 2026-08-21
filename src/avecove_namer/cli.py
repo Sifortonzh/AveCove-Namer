@@ -95,7 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     undo.add_argument("--execute", action="store_true")
 
     tmdb = subcommands.add_parser("tmdb-search", help="Read-only TMDB title search")
-    tmdb.add_argument("--token-file", required=True)
+    tmdb.add_argument("--token-file", required=True, help="0600 file containing a TMDB read token or v3 API key")
     tmdb.add_argument("--query", required=True)
     tmdb.add_argument("--kind", choices=("tv", "movie"), default="tv")
     tmdb.add_argument("--year", type=int)
@@ -169,4 +169,3 @@ def main(argv: list[str] | None = None) -> int:
     except (BackendError, ExecutionError, TMDBError, OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-
