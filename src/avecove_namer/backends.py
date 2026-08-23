@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
@@ -71,10 +72,20 @@ class LocalBackend(StorageBackend):
 class OpenListBackend(StorageBackend):
     name = "openlist"
 
-    def __init__(self, base_url: str, token: str, timeout: float = 20.0):
+    def __init__(
+        self,
+        base_url: str,
+        token: str,
+        timeout: float = 20.0,
+        rename_interval: float = 1.1,
+        rename_retries: int = 3,
+    ):
         self.base_url = base_url.rstrip("/")
         self.token = token.strip()
         self.timeout = timeout
+        self.rename_interval = rename_interval
+        self.rename_retries = rename_retries
+        self._last_rename_at = 0.0
         if not self.base_url.startswith(("http://", "https://")):
             raise BackendError("OpenList URL must start with http:// or https://")
         if not self.token:
@@ -144,14 +155,23 @@ class OpenListBackend(StorageBackend):
         target_path = PurePosixPath(target)
         if source_path.parent != target_path.parent:
             raise BackendError("v0.1 only permits in-place OpenList renames")
-        self._request(
-            "/api/fs/rename",
-            {
-                "path": str(source_path),
-                "name": target_path.name,
-                "overwrite": False,
-            },
-        )
+        payload = {
+            "path": str(source_path),
+            "name": target_path.name,
+            "overwrite": False,
+        }
+        for attempt in range(self.rename_retries + 1):
+            wait = self.rename_interval - (time.monotonic() - self._last_rename_at)
+            if wait > 0:
+                time.sleep(wait)
+            try:
+                self._request("/api/fs/rename", payload)
+                self._last_rename_at = time.monotonic()
+                return
+            except BackendError:
+                if attempt >= self.rename_retries:
+                    raise
+                time.sleep(self.rename_interval)
 
 
 def login_openlist(base_url: str, username: str, password: str, timeout: float = 20.0) -> str:

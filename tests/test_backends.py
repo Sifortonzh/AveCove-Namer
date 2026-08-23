@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from avecove_namer.backends import BackendError, OpenListBackend
 
@@ -36,6 +37,24 @@ class OpenListBackendTests(unittest.TestCase):
         backend = RecordingOpenListBackend()
         with self.assertRaises(BackendError):
             backend.rename("/115/a/file.mkv", "/115/b/file.mkv")
+
+    def test_rename_retries_transient_provider_error(self):
+        backend = RecordingOpenListBackend()
+        backend.rename_interval = 0
+        attempts = 0
+
+        def request(endpoint, payload):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise BackendError("OpenList API error: temporary provider failure")
+            backend.recorded = (endpoint, payload)
+            return {}
+
+        with patch.object(backend, "_request", side_effect=request):
+            backend.rename("/115/TV/Show/Show.S01E01.mkv", "/115/TV/Show/Show.2020.S01E01.mkv")
+
+        self.assertEqual(attempts, 2)
 
 
 if __name__ == "__main__":
