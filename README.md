@@ -114,7 +114,7 @@ avecove-namer plan \
   --csv work/modern-family.csv
 ```
 
-OpenList execution uses the same preview and exact-confirmation flow as the local backend. Token files must have `0600` permissions.
+OpenList execution uses the same preview and exact-confirmation flow as the local backend. Token files must have `0600` permissions. Rename requests use a conservative three-second cooldown by default to reduce cloud-provider rate-limit risk, including on 115.
 
 Resolve TMDB metadata, select the title language automatically, and include the root folder in the reviewed plan:
 

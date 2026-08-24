@@ -77,7 +77,7 @@ class OpenListBackend(StorageBackend):
         base_url: str,
         token: str,
         timeout: float = 20.0,
-        rename_interval: float = 1.1,
+        rename_interval: float = 3.0,
         rename_retries: int = 3,
     ):
         self.base_url = base_url.rstrip("/")
