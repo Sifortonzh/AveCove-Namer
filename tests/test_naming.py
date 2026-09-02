@@ -89,6 +89,26 @@ class NamingTests(unittest.TestCase):
             "Modern.Family.2009.S01E01.1080p.BluRay.x265.chs&eng.ass",
         )
 
+    def test_chinese_bilingual_subtitle_tag_is_normalized(self):
+        self.assertEqual(
+            build_subtitle_name(
+                "Modern.Family.2009.S01E13.1080p.BluRay.x265.mkv",
+                "Modern.Family.S01E13.简体&英文.ass",
+                NamingPolicy(),
+            ),
+            "Modern.Family.2009.S01E13.1080p.BluRay.x265.chs&eng.ass",
+        )
+
+    def test_episode_title_en_is_not_mistaken_for_a_language_tag(self):
+        self.assertEqual(
+            build_subtitle_name(
+                "Modern.Family.2009.S01E07.1080p.BluRay.x265.mkv",
+                "Modern.Family.S01E07.En.Garde.1080p.BluRay.ass",
+                NamingPolicy(),
+            ),
+            "Modern.Family.2009.S01E07.1080p.BluRay.x265.zh-CN.ass",
+        )
+
     def test_generated_tmdb_folder_can_be_read_back(self):
         self.assertEqual(
             infer_context(

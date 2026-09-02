@@ -209,36 +209,41 @@ def build_video_name(
 
 def subtitle_language_suffix(name: str, default: str = "zh-CN") -> str:
     stem = name[: -len(extension_of(name))]
+    language_tail = unicodedata.normalize("NFKC", stem).strip().rstrip("])} ")
     bilingual_patterns = (
         (
-            r"(?i)(?:^|[._-])(?:chs|sc|zh[-_.]?(?:cn|hans))(?:[&+]|[._-]+)(?:eng|en)(?:$|[._-])",
+            r"(?i)(?:^|[._\-[(])(?:chs|sc|zh[-_.]?(?:cn|hans))(?:[&+]|[._-]+)(?:eng|en)$",
             "chs&eng",
         ),
         (
-            r"(?i)(?:^|[._-])(?:cht|tc|zh[-_.]?(?:tw|hant))(?:[&+]|[._-]+)(?:eng|en)(?:$|[._-])",
+            r"(?i)(?:^|[._\-[(])(?:cht|tc|zh[-_.]?(?:tw|hant))(?:[&+]|[._-]+)(?:eng|en)$",
             "cht&eng",
         ),
         (
-            r"(?i)(?:^|[._-])(?:eng|en)(?:[&+]|[._-]+)(?:chs|sc|zh[-_.]?(?:cn|hans))(?:$|[._-])",
+            r"(?i)(?:^|[._\-[(])(?:eng|en)(?:[&+]|[._-]+)(?:chs|sc|zh[-_.]?(?:cn|hans))$",
             "chs&eng",
         ),
         (
-            r"(?i)(?:^|[._-])(?:eng|en)(?:[&+]|[._-]+)(?:cht|tc|zh[-_.]?(?:tw|hant))(?:$|[._-])",
+            r"(?i)(?:^|[._\-[(])(?:eng|en)(?:[&+]|[._-]+)(?:cht|tc|zh[-_.]?(?:tw|hant))$",
             "cht&eng",
         ),
+        (r"(?:^|[._\-[(])(?:简体|简中|简)\s*(?:[&+和]\s*)?(?:英文|英语|英)$", "chs&eng"),
+        (r"(?:^|[._\-[(])(?:繁体|繁中|繁)\s*(?:[&+和]\s*)?(?:英文|英语|英)$", "cht&eng"),
+        (r"(?:^|[._\-[(])简(?:中)?英$", "chs&eng"),
+        (r"(?:^|[._\-[(])繁(?:中)?英$", "cht&eng"),
     )
     for pattern, language in bilingual_patterns:
-        if re.search(pattern, stem):
+        if re.search(pattern, language_tail):
             return language
     patterns = (
-        (r"(?i)(?:^|[._-])(zh[-_.]?(?:cn|hans)|chs|sc)(?:$|[._-])", "zh-CN"),
-        (r"(?i)(?:^|[._-])(zh[-_.]?(?:tw|hant)|cht|tc)(?:$|[._-])", "zh-TW"),
-        (r"(?i)(?:^|[._-])(en|eng)(?:$|[._-])", "en"),
-        (r"(?i)(?:^|[._-])(ja|jpn)(?:$|[._-])", "ja"),
-        (r"(?i)(?:^|[._-])(ko|kor)(?:$|[._-])", "ko"),
+        (r"(?i)(?:^|[._\-[(])(zh[-_.]?(?:cn|hans)|chs|sc)$", "zh-CN"),
+        (r"(?i)(?:^|[._\-[(])(zh[-_.]?(?:tw|hant)|cht|tc)$", "zh-TW"),
+        (r"(?i)(?:^|[._\-[(])(en|eng)$", "en"),
+        (r"(?i)(?:^|[._\-[(])(ja|jpn)$", "ja"),
+        (r"(?i)(?:^|[._\-[(])(ko|kor)$", "ko"),
     )
     for pattern, language in patterns:
-        if re.search(pattern, stem):
+        if re.search(pattern, language_tail):
             return language
     return default
 
