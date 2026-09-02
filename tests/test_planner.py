@@ -53,6 +53,29 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual([operation.kind for operation in plan.operations], ["rename_video", "rename_directory"])
         self.assertEqual(plan.operations[-1].target, "/Movies/Kill Bill Vol.1 (2003) {tmdb=24}")
 
+    def test_tmdb_id_makes_root_rename_the_default_and_keeps_season_folder(self):
+        root = "/TV/Modern Family"
+        entries = [
+            Entry(f"{root}/第一季/Modern.Family.S01E01.Pilot.1080p.BluRay.mkv"),
+        ]
+        plan = make_plan(
+            entries,
+            root,
+            "openlist",
+            NamingPolicy(),
+            "Modern Family",
+            2009,
+            tmdb_id=1421,
+            primary_language="en",
+        )
+        targets = [operation.target for operation in plan.operations]
+        self.assertIn(
+            f"{root}/第一季/Modern.Family.2009.S01E01.1080p.BluRay.mkv",
+            targets,
+        )
+        self.assertIn("/TV/Modern Family (2009) {tmdb=1421}", targets)
+        self.assertFalse(any("Season 01" in target for target in targets))
+
 
 if __name__ == "__main__":
     unittest.main()

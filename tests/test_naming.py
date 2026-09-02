@@ -1,6 +1,13 @@
 import unittest
 
-from avecove_namer.naming import NamingPolicy, build_root_folder_name, build_subtitle_name, build_video_name, parse_media_name
+from avecove_namer.naming import (
+    NamingPolicy,
+    build_root_folder_name,
+    build_subtitle_name,
+    build_video_name,
+    infer_context,
+    parse_media_name,
+)
 
 
 class NamingTests(unittest.TestCase):
@@ -70,6 +77,30 @@ class NamingTests(unittest.TestCase):
                 NamingPolicy(),
             ),
             "Modern.Family.2009.S01E01.1080p.BluRay.x265.DTS.zh-CN.sup",
+        )
+
+    def test_bilingual_subtitle_tag_is_preserved(self):
+        self.assertEqual(
+            build_subtitle_name(
+                "Modern.Family.2009.S01E01.1080p.BluRay.x265.mkv",
+                "Modern.Family.S01E01.chs&eng.ass",
+                NamingPolicy(),
+            ),
+            "Modern.Family.2009.S01E01.1080p.BluRay.x265.chs&eng.ass",
+        )
+
+    def test_generated_tmdb_folder_can_be_read_back(self):
+        self.assertEqual(
+            infer_context(
+                "/TV/Modern Family (2009) {tmdb=1421}/第一季/Modern.Family.S01E01.mkv"
+            ),
+            ("Modern Family", 2009),
+        )
+        self.assertEqual(
+            infer_context(
+                "/TV/漫长的季节（2023） {tmdb=205272}/Season01/漫长的季节.S01E01.mkv"
+            ),
+            ("漫长的季节", 2023),
         )
 
 

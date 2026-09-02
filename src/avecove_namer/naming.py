@@ -18,7 +18,7 @@ EPISODE_RE = re.compile(
 )
 ALT_EPISODE_RE = re.compile(r"(?i)(?<!\d)(?P<season>\d{1,2})x(?P<episode>\d{1,3})(?!\d)")
 FOLDER_YEAR_RE = re.compile(r"^(?P<title>.+?)\s*[\[(](?P<year>19\d{2}|20\d{2})[\])]$")
-TMDB_SUFFIX_RE = re.compile(r"\s*\{tmdb-\d+\}\s*$", re.IGNORECASE)
+TMDB_SUFFIX_RE = re.compile(r"\s*\{tmdb\s*(?:=|-)\s*\d+\}\s*$", re.IGNORECASE)
 
 TECHNICAL_START_RE = re.compile(
     r"(?i)(?:^|[ ._-])(?:"
@@ -177,7 +177,8 @@ def infer_context(path: str) -> tuple[str | None, int | None]:
     for part in reversed(parts):
         if re.fullmatch(r"(?i)Season[ ._-]*\d{1,2}", part):
             continue
-        cleaned = TMDB_SUFFIX_RE.sub("", part).strip()
+        cleaned = unicodedata.normalize("NFKC", part)
+        cleaned = TMDB_SUFFIX_RE.sub("", cleaned).strip()
         match = FOLDER_YEAR_RE.match(cleaned)
         if match:
             return display_title(match.group("title")), int(match.group("year"))
@@ -208,6 +209,27 @@ def build_video_name(
 
 def subtitle_language_suffix(name: str, default: str = "zh-CN") -> str:
     stem = name[: -len(extension_of(name))]
+    bilingual_patterns = (
+        (
+            r"(?i)(?:^|[._-])(?:chs|sc|zh[-_.]?(?:cn|hans))(?:[&+]|[._-]+)(?:eng|en)(?:$|[._-])",
+            "chs&eng",
+        ),
+        (
+            r"(?i)(?:^|[._-])(?:cht|tc|zh[-_.]?(?:tw|hant))(?:[&+]|[._-]+)(?:eng|en)(?:$|[._-])",
+            "cht&eng",
+        ),
+        (
+            r"(?i)(?:^|[._-])(?:eng|en)(?:[&+]|[._-]+)(?:chs|sc|zh[-_.]?(?:cn|hans))(?:$|[._-])",
+            "chs&eng",
+        ),
+        (
+            r"(?i)(?:^|[._-])(?:eng|en)(?:[&+]|[._-]+)(?:cht|tc|zh[-_.]?(?:tw|hant))(?:$|[._-])",
+            "cht&eng",
+        ),
+    )
+    for pattern, language in bilingual_patterns:
+        if re.search(pattern, stem):
+            return language
     patterns = (
         (r"(?i)(?:^|[._-])(zh[-_.]?(?:cn|hans)|chs|sc)(?:$|[._-])", "zh-CN"),
         (r"(?i)(?:^|[._-])(zh[-_.]?(?:tw|hant)|cht|tc)(?:$|[._-])", "zh-TW"),

@@ -4,7 +4,7 @@
 
 [English](README.md)
 
-> 当前版本：v0.1.1 alpha。请先选择一个小目录试运行，并在执行前逐条审核计划。
+> 当前版本：v0.2.0 alpha。请先选择一个小目录试运行，并在执行前逐条审核计划。
 
 AveCove Namer 是独立实现的云盘影视整理工具。默认剧集规则把稳定识别放在首位：加入剧集首播年份、省略非必要的单集标题，同时保留画质、来源、编码、音轨等有效封装信息。
 
@@ -13,11 +13,13 @@ Modern.Family.2009.S01E01.1080p.BluRay.x265.DTS.mkv
 Modern.Family.2009.S01E01.1080p.BluRay.x265.DTS.zh-CN.sup
 ```
 
-## v0.1 已实现
+## v0.2 已实现
 
 - 支持本地目录和 OpenList。
 - 为剧集和电影补充年份并规范名称。
 - 按作品来源选择中英文目录标题，并写入 Emby 可识别的 TMDB ID 标签。
+- 提供已确认 TMDB ID 时，默认把选中的作品目录规范成标题、年份和 TMDB ID。
+- 递归规范内部媒体文件，但保留 `Season 01`、`Season01`、`S01`、`第一季` 等现有季目录名称和位置。
 - 保留画质、片源、视频编码、音轨等发布信息。
 - 外挂字幕与视频完整主文件名配对。
 - 先生成只读 JSON 计划，可同时导出 CSV 审核表。
@@ -114,7 +116,7 @@ avecove-namer plan \
 
 OpenList 的正式执行也必须经过相同的预览与精确确认。Token 文件权限必须为 `0600`。改名请求默认采用保守的 3 秒冷却时间，以降低包括 115 在内的云盘风控风险。
 
-通过 TMDB 自动选择标题语言，并把作品上一级目录加入审核计划：
+通过 TMDB 自动选择标题语言。提供已确认的 TMDB ID 后，选中的作品目录会默认加入审核计划：
 
 ```bash
 avecove-namer plan \
@@ -126,9 +128,10 @@ avecove-namer plan \
   --tmdb-token-file "$HOME/.config/avecove-namer/tmdb.token" \
   --media-kind movie \
   --title-style auto \
-  --rename-root-folder \
   --output work/kill-bill.json
 ```
+
+只有确实需要保留作品目录原名时才使用 `--no-rename-root-folder`。
 
 ## 默认命名规则
 
@@ -145,6 +148,8 @@ avecove-namer plan \
 ```
 
 当程序无法从目录或原文件名确认年份时，会跳过该文件，不会猜测。可以使用 `--title` 和 `--year` 输入已经人工确认的片名与年份。详细规则见[命名规则](docs/naming-rules.zh-CN.md)。
+
+`chs&eng`、`cht&eng` 等双语字幕标记会继续保留。季目录名称不会被修改或移动；规范对象是选中的作品目录及其内部媒体文件。
 
 ## 安全机制
 

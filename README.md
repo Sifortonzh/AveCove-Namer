@@ -4,7 +4,7 @@ Safe, reviewable media naming for OpenList, Emby, Infuse, and SenPlayer.
 
 [简体中文](README.zh-CN.md)
 
-> Status: v0.1.1 alpha. Start with a small canary folder and review every plan before execution.
+> Status: v0.2.0 alpha. Start with a small canary folder and review every plan before execution.
 
 AveCove Namer is an independent, clean-room media naming tool built for cloud-drive libraries. Its default TV rule deliberately prioritizes reliable library matching over episode-title decoration:
 
@@ -15,11 +15,13 @@ Modern.Family.2009.S01E01.1080p.BluRay.x265.DTS.zh-CN.sup
 
 The series year is included, episode titles are omitted, and useful release metadata is retained.
 
-## What v0.1 includes
+## What v0.2 includes
 
 - Local filesystem and OpenList backends.
 - Year-aware TV and movie naming.
 - Origin-aware movie and series folder naming with Emby TMDB ID tags.
+- Automatic selected-work-folder naming whenever a verified TMDB ID is supplied.
+- Recursive media naming without renaming or moving existing season folders such as `Season 01`, `Season01`, `S01`, or `第一季`.
 - Technical/release metadata preservation.
 - Sidecar subtitle pairing with a full video-stem match.
 - Read-only JSON and optional CSV plans.
@@ -116,7 +118,7 @@ avecove-namer plan \
 
 OpenList execution uses the same preview and exact-confirmation flow as the local backend. Token files must have `0600` permissions. Rename requests use a conservative three-second cooldown by default to reduce cloud-provider rate-limit risk, including on 115.
 
-Resolve TMDB metadata, select the title language automatically, and include the root folder in the reviewed plan:
+Resolve TMDB metadata and select the title language automatically. Supplying a verified TMDB ID includes the selected work folder in the reviewed plan by default:
 
 ```bash
 avecove-namer plan \
@@ -128,9 +130,10 @@ avecove-namer plan \
   --tmdb-token-file "$HOME/.config/avecove-namer/tmdb.token" \
   --media-kind movie \
   --title-style auto \
-  --rename-root-folder \
   --output work/kill-bill.json
 ```
+
+Use `--no-rename-root-folder` only when the selected folder name must remain unchanged.
 
 ## Naming policy
 
@@ -145,6 +148,8 @@ The subtitle pattern is:
 ```text
 {Complete.Video.Stem}.{language}.{subtitle-ext}
 ```
+
+Bilingual markers such as `chs&eng` and `cht&eng` are preserved. Existing season-folder names are deliberately left unchanged; the selected work folder and files inside it are the normalization targets.
 
 If the series year cannot be inferred from the folder or filename, the item is skipped. A verified title and year can be supplied with `--title` and `--year`. See [Naming rules](docs/naming-rules.md).
 

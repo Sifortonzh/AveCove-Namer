@@ -12,7 +12,7 @@ Series.Title.2020.S01E01.1080p.WEB-DL.x265.DDP5.1.mkv
 
 - The series title and first-air year form the stable identity.
 - `SxxEyy` is required for episode matching.
-- Episode titles are intentionally omitted in v0.1.
+- Episode titles are intentionally omitted by default.
 - Recognized technical/release tokens are retained in their original order.
 - Unrecognized decorative text before the technical tail is dropped.
 
@@ -37,7 +37,9 @@ The recommended library policy is origin-aware:
 - When both languages are useful, the punctuation follows the first, primary language: `Kill Bill Vol.1 杀死比尔 (2003) {tmdb=24}` or `漫长的季节 The Long Season（2023） {tmdb=205272}`.
 - Media filenames retain one canonical primary title, for example `Kill.Bill.Vol.1.2003...` or `漫长的季节.2023.S01E01...`.
 
-This keeps filenames short and predictable while giving Emby a strong TMDB identity in the folder. `--tmdb-id` with `--title-style auto` selects Chinese for Chinese-origin media and English otherwise. Folder renaming remains explicit through `--rename-root-folder`.
+This keeps filenames short and predictable while giving Emby a strong TMDB identity in the folder. `--tmdb-id` with `--title-style auto` selects Chinese for Chinese-origin media and English otherwise. A verified TMDB ID makes selected-work-folder normalization the default; `--no-rename-root-folder` is the explicit opt-out.
+
+Existing season folders are accepted as-is. Names such as `Season 01`, `Season01`, `S01`, `第一季`, and `第1季` are not renamed or moved. Media files below them are still normalized recursively.
 
 ## Sidecar subtitles
 
@@ -49,9 +51,11 @@ Series.Title.2020.S01E01.1080p.WEB-DL.x265.DDP5.1.zh-CN.sup
 
 Existing common language tags are retained. If no language is detected, `zh-CN` is used by default and can be changed with `--subtitle-language-default`.
 
+Bilingual tags such as `chs&eng` and `cht&eng` are preserved.
+
 ## Deliberate safety limits
 
 - No guessed year when a verified value is unavailable.
-- No automatic episode-title lookup in v0.1.
+- No automatic episode-title lookup by default.
 - No overwriting occupied target paths.
 - No execution from a plan containing conflicts.

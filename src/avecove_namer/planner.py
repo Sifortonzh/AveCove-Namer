@@ -42,10 +42,12 @@ def make_plan(
     policy: NamingPolicy,
     title_override: str | None = None,
     year_override: int | None = None,
-    rename_root_folder: bool = False,
+    rename_root_folder: bool | None = None,
     tmdb_id: int | None = None,
     primary_language: str | None = None,
 ) -> RenamePlan:
+    if rename_root_folder is None:
+        rename_root_folder = tmdb_id is not None
     plan = RenamePlan(
         version=1,
         created_at=utc_now(),

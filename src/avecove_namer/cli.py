@@ -85,7 +85,20 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         help="TMDB title language policy; auto uses Chinese for Chinese-origin media and English otherwise",
     )
-    plan.add_argument("--rename-root-folder", action="store_true", help="Rename the selected movie or series folder with year and TMDB ID")
+    root_folder = plan.add_mutually_exclusive_group()
+    root_folder.add_argument(
+        "--rename-root-folder",
+        dest="rename_root_folder",
+        action="store_true",
+        help="Rename the selected work folder with title, year, and TMDB ID (default when --tmdb-id is set)",
+    )
+    root_folder.add_argument(
+        "--no-rename-root-folder",
+        dest="rename_root_folder",
+        action="store_false",
+        help="Keep the selected work folder name even when --tmdb-id is set",
+    )
+    plan.set_defaults(rename_root_folder=None)
     plan.add_argument("--include-episode-title", action="store_true", help="Reserved for a future TMDB episode-title resolver")
     plan.add_argument("--subtitle-language-default", default="zh-CN")
     plan.add_argument("--output", required=True)
@@ -146,8 +159,11 @@ def run(args: argparse.Namespace) -> int:
                 args.media_kind,
                 args.title_style,
             )
-        if args.rename_root_folder and not args.tmdb_id:
+        if args.rename_root_folder is True and not args.tmdb_id:
             raise ValueError("--rename-root-folder requires --tmdb-id")
+        rename_root_folder = args.rename_root_folder
+        if rename_root_folder is None:
+            rename_root_folder = args.tmdb_id is not None
         title = args.title or (str(resolved["title"]) if resolved else None)
         year = args.year or (int(resolved["year"]) if resolved and resolved.get("year") else None)
         primary_language = str(resolved["primary_language"]) if resolved else None
@@ -160,7 +176,7 @@ def run(args: argparse.Namespace) -> int:
             policy,
             title,
             year,
-            args.rename_root_folder,
+            rename_root_folder,
             args.tmdb_id,
             primary_language,
         )
