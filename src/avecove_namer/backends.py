@@ -7,6 +7,7 @@ import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
 from pathlib import Path, PurePosixPath
+from uuid import uuid4
 
 from .models import Entry
 
@@ -150,11 +151,7 @@ class OpenListBackend(StorageBackend):
         name = PurePosixPath(path).name
         return any(str(item.get("name")) == name for item in self._list(parent))
 
-    def rename(self, source: str, target: str) -> None:
-        source_path = PurePosixPath(source)
-        target_path = PurePosixPath(target)
-        if source_path.parent != target_path.parent:
-            raise BackendError("v0.1 only permits in-place OpenList renames")
+    def _rename_once(self, source_path: PurePosixPath, target_path: PurePosixPath) -> None:
         payload = {
             "path": str(source_path),
             "name": target_path.name,
@@ -172,6 +169,25 @@ class OpenListBackend(StorageBackend):
                 if attempt >= self.rename_retries:
                     raise
                 time.sleep(self.rename_interval)
+
+    def rename(self, source: str, target: str) -> None:
+        source_path = PurePosixPath(source)
+        target_path = PurePosixPath(target)
+        if source_path.parent != target_path.parent:
+            raise BackendError("v0.1 only permits in-place OpenList renames")
+        if source_path.name != target_path.name and source_path.name.casefold() == target_path.name.casefold():
+            temporary_path = source_path.parent / f".avecove-namer-{uuid4().hex[:12]}.tmp"
+            self._rename_once(source_path, temporary_path)
+            try:
+                self._rename_once(temporary_path, target_path)
+            except BackendError:
+                try:
+                    self._rename_once(temporary_path, source_path)
+                except BackendError:
+                    pass
+                raise
+            return
+        self._rename_once(source_path, target_path)
 
 
 def login_openlist(base_url: str, username: str, password: str, timeout: float = 20.0) -> str:

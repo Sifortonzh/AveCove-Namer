@@ -8,9 +8,11 @@ class RecordingOpenListBackend(OpenListBackend):
     def __init__(self):
         super().__init__("https://openlist.example.com", "test-token")
         self.recorded = None
+        self.recorded_calls = []
 
     def _request(self, endpoint, payload):
         self.recorded = (endpoint, payload)
+        self.recorded_calls.append((endpoint, payload))
         return {}
 
 
@@ -37,6 +39,21 @@ class OpenListBackendTests(unittest.TestCase):
         backend = RecordingOpenListBackend()
         with self.assertRaises(BackendError):
             backend.rename("/115/a/file.mkv", "/115/b/file.mkv")
+
+    def test_case_only_rename_uses_a_temporary_name(self):
+        backend = RecordingOpenListBackend()
+        backend.rename_interval = 0
+        backend.rename(
+            "/115/Movies/Movie.1080p.Remux.mkv",
+            "/115/Movies/Movie.1080p.REMUX.mkv",
+        )
+        self.assertEqual(len(backend.recorded_calls), 2)
+        first_payload = backend.recorded_calls[0][1]
+        second_payload = backend.recorded_calls[1][1]
+        self.assertEqual(first_payload["path"], "/115/Movies/Movie.1080p.Remux.mkv")
+        self.assertRegex(first_payload["name"], r"^\.avecove-namer-[0-9a-f]{12}\.tmp$")
+        self.assertEqual(second_payload["path"], f"/115/Movies/{first_payload['name']}")
+        self.assertEqual(second_payload["name"], "Movie.1080p.REMUX.mkv")
 
     def test_rename_retries_transient_provider_error(self):
         backend = RecordingOpenListBackend()
