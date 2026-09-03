@@ -90,6 +90,12 @@ class NamingTests(unittest.TestCase):
             "Kill Bill Vol.1 (2003) {tmdb=24}",
         )
 
+    def test_english_folder_preserves_apostrophe(self):
+        self.assertEqual(
+            build_root_folder_name("Harry Potter and the Philosopher's Stone", 2001, 671, "en"),
+            "Harry Potter and the Philosopher's Stone (2001) {tmdb=671}",
+        )
+
     def test_chinese_folder_uses_attached_full_width_parentheses(self):
         self.assertEqual(
             build_root_folder_name("漫长的季节", 2023, 205272, "zh"),

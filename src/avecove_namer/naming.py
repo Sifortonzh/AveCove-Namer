@@ -83,7 +83,7 @@ def clean_folder_title(value: str) -> str:
     value = unicodedata.normalize("NFKC", value)
     value = re.sub(r"(?<=[\u3400-\u9fff]),(?=[\u3400-\u9fff])", "，", value)
     value = TMDB_SUFFIX_RE.sub("", value)
-    value = re.sub(r"[\\/:|<>*?\"']", " ", value)
+    value = re.sub(r"[\\/:|<>*?\"]", " ", value)
     value = re.sub(r"\bVol\.\s+(\d+)", r"Vol.\1", value, flags=re.IGNORECASE)
     return re.sub(r"\s+", " ", value).strip(" .")
 
