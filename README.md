@@ -4,7 +4,7 @@ Safe, reviewable media naming for OpenList, Emby, Infuse, and SenPlayer.
 
 [简体中文](README.zh-CN.md)
 
-> Status: v0.2.0 alpha. Start with a small canary folder and review every plan before execution.
+> Status: v0.2.2 alpha. Start with a small canary folder and review every plan before execution.
 
 AveCove Namer is an independent, clean-room media naming tool built for cloud-drive libraries. Its default TV rule deliberately prioritizes reliable library matching over episode-title decoration:
 
