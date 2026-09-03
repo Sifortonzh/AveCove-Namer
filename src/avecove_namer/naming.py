@@ -14,7 +14,7 @@ VIDEO_EXTENSIONS = {
 SUBTITLE_EXTENSIONS = {".srt", ".ass", ".ssa", ".sup", ".sub", ".vtt", ".smi", ".idx"}
 YEAR_RE = re.compile(r"(?<!\d)(19\d{2}|20\d{2})(?!\d)")
 EPISODE_RE = re.compile(
-    r"(?i)(?<![A-Za-z0-9])S(?P<season>\d{1,2})[ ._-]*E(?P<episode>\d{1,3})(?!\d)"
+    r"(?i)(?<![A-Za-z0-9])S(?P<season>\d{1,2})[ ._-]*E(?:P)?(?P<episode>\d{1,3})(?!\d)"
 )
 ALT_EPISODE_RE = re.compile(r"(?i)(?<!\d)(?P<season>\d{1,2})x(?P<episode>\d{1,3})(?!\d)")
 FOLDER_YEAR_RE = re.compile(r"^(?P<title>.+?)\s*[\[(](?P<year>19\d{2}|20\d{2})[\])]$")

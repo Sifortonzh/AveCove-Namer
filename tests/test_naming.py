@@ -28,6 +28,15 @@ class NamingTests(unittest.TestCase):
             "This.Is.Us.2016.S02E03.1080p.WEB-DL.DDP5.1.mkv",
         )
 
+    def test_episode_ep_variant_is_supported(self):
+        parsed = parse_media_name("S01EP76.2011.2160p.WEB-DL.H265.mp4")
+        self.assertEqual(parsed.kind, "episode")
+        self.assertEqual((parsed.season, parsed.episode), (1, 76))
+        self.assertEqual(
+            build_video_name(parsed, NamingPolicy(), "甄嬛传", 2011),
+            "甄嬛传.2011.S01E76.2160p.WEB-DL.H265.mp4",
+        )
+
     def test_movie_year_and_release_data_are_preserved(self):
         parsed = parse_media_name("The.Godfather.1972.2160p.UHD.BluRay.REMUX.DV.HDR.mkv")
         self.assertEqual(parsed.year, 1972)
