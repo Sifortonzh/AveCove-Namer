@@ -1,0 +1,184 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  cat <<'EOF'
+Usage:
+  avecove-namer-run "/Cloud/Media/Work Folder" TMDB_ID tv|movie [auto|english|chinese|original|bilingual]
+
+Example:
+  avecove-namer-run "/GuangYa/00剧/01美/Game of Thrones (2011)" 1399 tv
+
+The command creates a read-only plan first. It only applies changes after you
+type YES, keeps a rollback journal, updates the matching local STRM directory,
+and refreshes only the affected Emby library.
+EOF
+}
+
+if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
+  usage >&2
+  exit 2
+fi
+
+media_path=$1
+tmdb_id=$2
+media_kind=$3
+title_style=${4:-auto}
+
+case "$media_path" in
+  /115/*|/Baidu/*|/Quark/*|/123/*|/GuangYa/*) ;;
+  *) echo "Refusing unsupported OpenList path: $media_path" >&2; exit 2 ;;
+esac
+case "$media_path" in
+  *..*|*'
+'*) echo "Refusing unsafe path: $media_path" >&2; exit 2 ;;
+esac
+case "$tmdb_id" in
+  ''|*[!0-9]*) echo "TMDB_ID must be a positive integer." >&2; exit 2 ;;
+esac
+case "$media_kind" in tv|movie) ;; *) echo "Kind must be tv or movie." >&2; exit 2 ;; esac
+case "$title_style" in auto|english|chinese|original|bilingual) ;; *) echo "Invalid title style." >&2; exit 2 ;; esac
+
+openlist_url=${AVECOVE_OPENLIST_URL:-http://127.0.0.1:5245}
+token_file=${AVECOVE_OPENLIST_TOKEN_FILE:-/opt/docker/avecove-namer/secrets/openlist.token}
+tmdb_token_file=${AVECOVE_TMDB_TOKEN_FILE:-/opt/docker/avecove-namer/secrets/tmdb.token}
+work_root=${AVECOVE_NAMER_WORK_ROOT:-/opt/docker/avecove-namer/work}
+local_tree=${AVECOVE_EMBY_LOCAL_TREE:-/opt/docker/emby/media/openlist-local-tree}
+refresh_worker=${AVECOVE_REFRESH_WORKER:-/opt/emby-strm/refresh-one-source-openlist-lowload.py}
+
+for required in "$token_file" "$tmdb_token_file" "$refresh_worker"; do
+  if [ ! -f "$required" ]; then
+    echo "Required file not found: $required" >&2
+    exit 1
+  fi
+done
+
+mkdir -p "$work_root"
+exec 9>/run/lock/avecove-namer-guided.lock
+if ! flock -n 9; then
+  echo "Another guided Namer job is already running. Try again later." >&2
+  exit 1
+fi
+
+stamp=$(date +%Y%m%d-%H%M%S)
+digest=$(printf '%s' "$media_path" | sha256sum | cut -c1-8)
+job_dir="$work_root/$stamp-$digest"
+mkdir -p "$job_dir"
+plan="$job_dir/plan.json"
+csv="$job_dir/plan.csv"
+journal="$job_dir/rollback.jsonl"
+verify="$job_dir/verify.json"
+
+echo "Step 1/4: creating a read-only plan..."
+avecove-namer plan \
+  --backend openlist \
+  --openlist-url "$openlist_url" \
+  --openlist-token-file "$token_file" \
+  --path "$media_path" \
+  --tmdb-id "$tmdb_id" \
+  --tmdb-token-file "$tmdb_token_file" \
+  --media-kind "$media_kind" \
+  --title-style "$title_style" \
+  --output "$plan" \
+  --csv "$csv"
+
+python3 - "$plan" <<'PY'
+import json
+import sys
+
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+operations = data.get("operations", [])
+conflicts = data.get("conflicts", [])
+print(f"Plan root: {data.get('root')}")
+print(f"Operations: {len(operations)}; conflicts: {len(conflicts)}")
+for operation in operations[:20]:
+    print(f"  {operation['kind']}: {operation['source']} -> {operation['target']}")
+if len(operations) > 20:
+    print(f"  ... and {len(operations) - 20} more; see {sys.argv[1]}")
+PY
+
+operation_count=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["operations"]))' "$plan")
+conflict_count=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["conflicts"]))' "$plan")
+plan_root=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["root"])' "$plan")
+sync_prefix=$(python3 - "$plan" <<'PY'
+import json
+import sys
+
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+root = data["root"]
+for operation in data.get("operations", []):
+    if operation.get("kind") == "rename_directory" and operation.get("source") == root:
+        print(operation["target"])
+        break
+else:
+    print(root)
+PY
+)
+
+if [ "$conflict_count" -ne 0 ]; then
+  echo "The plan has conflicts. Nothing was changed. Review: $plan" >&2
+  exit 1
+fi
+if [ "$operation_count" -eq 0 ]; then
+  echo "Already compliant. Nothing needs to be renamed."
+  exit 0
+fi
+
+printf 'Type YES to apply these %s operations: ' "$operation_count"
+IFS= read -r answer
+if [ "$answer" != "YES" ]; then
+  echo "Cancelled. Nothing was changed. Plan kept at: $plan"
+  exit 0
+fi
+
+echo "Step 2/4: applying the reviewed plan with a rollback journal..."
+avecove-namer apply \
+  --backend openlist \
+  --openlist-url "$openlist_url" \
+  --openlist-token-file "$token_file" \
+  --plan "$plan" \
+  --journal "$journal" \
+  --execute \
+  --confirm-root "$plan_root" \
+  --confirm-count "$operation_count"
+
+old_local="$local_tree$plan_root"
+new_local="$local_tree$sync_prefix"
+if [ "$old_local" != "$new_local" ] && [ -d "$old_local" ]; then
+  if [ -e "$new_local" ]; then
+    echo "Local STRM target already exists; leaving both paths for the refresh worker to reconcile."
+  else
+    mkdir -p "$(dirname "$new_local")"
+    mv -- "$old_local" "$new_local"
+    echo "Moved the existing local STRM folder to its canonical name."
+  fi
+fi
+
+echo "Step 3/4: updating only this STRM path and its matching Emby library..."
+REFRESH_CPU_LIMIT=0.35 \
+REFRESH_ALLOW_CONTAINERS=__none__ \
+REFRESH_PRESERVE_IMAGES=1 \
+REFRESH_PRESERVE_SIDECARS=1 \
+  "$refresh_worker" --prefix "$sync_prefix"
+
+echo "Step 4/4: verifying that the cloud path is now compliant..."
+avecove-namer plan \
+  --backend openlist \
+  --openlist-url "$openlist_url" \
+  --openlist-token-file "$token_file" \
+  --path "$sync_prefix" \
+  --tmdb-id "$tmdb_id" \
+  --tmdb-token-file "$tmdb_token_file" \
+  --media-kind "$media_kind" \
+  --title-style "$title_style" \
+  --output "$verify"
+
+remaining=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["operations"]))' "$verify")
+if [ "$remaining" -ne 0 ]; then
+  echo "Verification found $remaining remaining operations. Review: $verify" >&2
+  exit 1
+fi
+
+echo "Completed successfully."
+echo "Canonical path: $sync_prefix"
+echo "Rollback journal: $journal"

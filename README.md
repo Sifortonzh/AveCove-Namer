@@ -135,6 +135,16 @@ avecove-namer plan \
 
 Use `--no-rename-root-folder` only when the selected folder name must remain unchanged.
 
+### Guided server workflow
+
+After installing `deploy/avecove-namer-run`, one command performs a read-only preview, explicit confirmation, cloud rename, narrow STRM sync, affected Emby library refresh, and final verification. By default it syncs STRM files only and preserves existing image and subtitle sidecars, preventing large sidecar downloads from stalling a small server:
+
+```bash
+avecove-namer-run "/GuangYa/00剧/01美/Game of Thrones (2011)" 1399 tv
+```
+
+The optional final argument selects `auto` (default), `english`, `chinese`, `original`, or `bilingual` title styling. The script changes files only after the operator types uppercase `YES`, and every run keeps a separate rollback journal.
+
 ## Naming policy
 
 The default episode pattern is:

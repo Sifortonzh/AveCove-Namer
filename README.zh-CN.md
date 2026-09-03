@@ -133,6 +133,16 @@ avecove-namer plan \
 
 只有确实需要保留作品目录原名时才使用 `--no-rename-root-folder`。
 
+### 服务器一键整理
+
+部署 `deploy/avecove-namer-run` 后，可用一条命令完成“只读预览 → 人工确认 → 云盘改名 → 对应 STRM 增量同步 → 仅刷新受影响的 Emby 媒体库 → 再次校验”。默认只同步 STRM，保留现有图片和字幕旁挂文件，避免小内存服务器因下载大量旁挂文件而卡住：
+
+```bash
+avecove-namer-run "/GuangYa/00剧/01美/Game of Thrones (2011)" 1399 tv
+```
+
+最后一个可选参数是标题策略：`auto`（默认）、`english`、`chinese`、`original` 或 `bilingual`。脚本只有在输入大写 `YES` 后才会真正改名，并为每次操作保留独立的回滚日志。
+
 ## 默认命名规则
 
 剧集：
