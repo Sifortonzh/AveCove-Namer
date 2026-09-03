@@ -71,6 +71,7 @@ def extension_of(name: str) -> str:
 
 def clean_component(value: str) -> str:
     value = unicodedata.normalize("NFKC", value)
+    value = re.sub(r"(?<=[\u3400-\u9fff]),(?=[\u3400-\u9fff])", "，", value)
     value = TMDB_SUFFIX_RE.sub("", value)
     value = re.sub(r"[\[\]{}（）()]", " ", value)
     value = re.sub(r"[\\/:|<>*?\"']", ".", value)
@@ -80,6 +81,7 @@ def clean_component(value: str) -> str:
 
 def clean_folder_title(value: str) -> str:
     value = unicodedata.normalize("NFKC", value)
+    value = re.sub(r"(?<=[\u3400-\u9fff]),(?=[\u3400-\u9fff])", "，", value)
     value = TMDB_SUFFIX_RE.sub("", value)
     value = re.sub(r"[\\/:|<>*?\"']", " ", value)
     value = re.sub(r"\bVol\.\s+(\d+)", r"Vol.\1", value, flags=re.IGNORECASE)
@@ -203,7 +205,10 @@ def build_video_name(
         parts.append(str(resolved_year))
 
     if policy.preserve_technical_tail:
-        parts.extend(parsed.technical_tail)
+        technical_tail = parsed.technical_tail
+        if resolved_year:
+            technical_tail = tuple(token for token in technical_tail if token != str(resolved_year))
+        parts.extend(technical_tail)
     return ".".join(filter(None, parts)) + parsed.extension
 
 

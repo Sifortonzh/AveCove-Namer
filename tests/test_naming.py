@@ -59,6 +59,24 @@ class NamingTests(unittest.TestCase):
             "漫长的季节.2023.S01E01.1080p.WEB-DL.mkv",
         )
 
+    def test_chinese_comma_is_preserved(self):
+        parsed = parse_media_name("Genius.Girlfriend.S01E01.2160p.WEB-DL.mp4")
+        self.assertEqual(
+            build_video_name(parsed, NamingPolicy(), "天才，女友", 2026),
+            "天才，女友.2026.S01E01.2160p.WEB-DL.mp4",
+        )
+        self.assertEqual(
+            build_root_folder_name("天才，女友", 2026, 289116, "zh"),
+            "天才，女友（2026） {tmdb=289116}",
+        )
+
+    def test_duplicate_series_year_is_removed_from_technical_tail(self):
+        parsed = parse_media_name("御廷谣.2026.S01E14.2160p.2026.WEB-DL.H265.AAC.mp4")
+        self.assertEqual(
+            build_video_name(parsed, NamingPolicy(), "御廷谣", 2026),
+            "御廷谣.2026.S01E14.2160p.WEB-DL.H265.AAC.mp4",
+        )
+
     def test_bilingual_title_is_supported(self):
         parsed = parse_media_name("Source.2003.2160p.REMUX.DV.mkv")
         self.assertEqual(
