@@ -17,6 +17,12 @@ class RecordingOpenListBackend(OpenListBackend):
 
 
 class OpenListBackendTests(unittest.TestCase):
+    def test_detective_can_force_a_fresh_directory_listing(self):
+        backend = RecordingOpenListBackend()
+        backend.list_directories("/GuangYa/00剧/01韩", refresh=True)
+        self.assertEqual(backend.recorded[0], "/api/fs/list")
+        self.assertTrue(backend.recorded[1]["refresh"])
+
     def test_rename_uses_full_source_path_and_new_name(self):
         backend = RecordingOpenListBackend()
         backend.rename(

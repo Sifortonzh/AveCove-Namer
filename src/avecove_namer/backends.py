@@ -113,23 +113,30 @@ class OpenListBackend(StorageBackend):
         result = data.get("data")
         return result if isinstance(result, dict) else {}
 
-    def _list(self, path: str) -> list[dict[str, object]]:
+    def _list(self, path: str, refresh: bool = False) -> list[dict[str, object]]:
         data = self._request(
             "/api/fs/list",
-            {"path": path, "password": "", "page": 1, "per_page": 0, "refresh": False},
+            {"path": path, "password": "", "page": 1, "per_page": 0, "refresh": refresh},
         )
         content = data.get("content") or []
         if not isinstance(content, list):
             raise BackendError(f"Unexpected OpenList directory response for {path}")
         return [item for item in content if isinstance(item, dict)]
 
-    def scan(self, root: str) -> list[Entry]:
+    def list_directories(self, root: str, refresh: bool = False) -> list[dict[str, object]]:
+        normalized_root = "/" + root.strip("/") if root != "/" else "/"
+        return sorted(
+            (item for item in self._list(normalized_root, refresh=refresh) if bool(item.get("is_dir")) and item.get("name")),
+            key=lambda item: str(item.get("name", "")).casefold(),
+        )
+
+    def scan(self, root: str, refresh: bool = False) -> list[Entry]:
         normalized_root = "/" + root.strip("/") if root != "/" else "/"
         pending = [normalized_root]
         entries: list[Entry] = []
         while pending:
             current = pending.pop()
-            for item in self._list(current):
+            for item in self._list(current, refresh=refresh):
                 name = str(item.get("name", ""))
                 if not name:
                     continue

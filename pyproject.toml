@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "avecove-namer"
-version = "0.2.3"
+version = "0.3.0"
 description = "Safe, reviewable media naming for OpenList, Emby, Infuse and SenPlayer."
 readme = "README.md"
 requires-python = ">=3.10"

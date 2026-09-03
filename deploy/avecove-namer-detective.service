@@ -1,0 +1,16 @@
+[Unit]
+Description=AveCove Namer Detective low-load cloud change scan
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/avecove-namer-detective
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=20%
+MemoryMax=160M
+TimeoutStartSec=45min
+
+[Install]
+WantedBy=multi-user.target

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from . import __version__
 from .backends import BackendError, LocalBackend, OpenListBackend, StorageBackend, login_openlist
+from .detective import parse_watch, run_detective, write_json_atomic
 from .executor import ExecutionError, execute_plan, preview, rollback
 from .naming import NamingPolicy
 from .planner import make_plan, read_plan, write_plan
@@ -123,6 +124,23 @@ def build_parser() -> argparse.ArgumentParser:
     tmdb.add_argument("--kind", choices=("tv", "movie"), default="tv")
     tmdb.add_argument("--year", type=int)
     tmdb.add_argument("--language", default="en-US")
+
+    detective = subcommands.add_parser("detect", help="Detect changed OpenList works and safely run Namer")
+    detective.add_argument("--openlist-url", required=True)
+    detective.add_argument("--openlist-token-file", required=True)
+    detective.add_argument("--tmdb-token-file", required=True)
+    detective.add_argument("--watch", action="append", required=True, help="Repeat tv:/path or movie:/path")
+    detective.add_argument("--state", required=True)
+    detective.add_argument("--work-dir", required=True)
+    detective.add_argument("--summary", required=True)
+    detective.add_argument("--bootstrap", action="store_true", help="Record the current library without renaming")
+    detective.add_argument("--execute", action="store_true", help="Apply only high-confidence, conflict-free plans")
+    detective.add_argument("--max-operations", type=int, default=200)
+    detective.add_argument(
+        "--title-style",
+        choices=("auto", "english", "chinese", "original", "bilingual"),
+        default="auto",
+    )
     return parser
 
 
@@ -137,6 +155,29 @@ def run(args: argparse.Namespace) -> int:
     if args.command == "tmdb-search":
         results = TMDBClient(secure_read(args.token_file)).search(args.query, args.kind, args.year, args.language)
         print(json.dumps(results, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "detect":
+        if args.max_operations < 1:
+            raise ValueError("--max-operations must be positive")
+        backend = OpenListBackend(args.openlist_url, secure_read(args.openlist_token_file))
+        summary = run_detective(
+            backend,
+            TMDBClient(secure_read(args.tmdb_token_file)),
+            [parse_watch(value) for value in args.watch],
+            Path(args.state),
+            Path(args.work_dir),
+            execute=args.execute,
+            bootstrap=args.bootstrap,
+            max_operations=args.max_operations,
+            title_style=args.title_style,
+        )
+        write_json_atomic(Path(args.summary), summary)
+        counts: dict[str, int] = {}
+        for event in summary["events"]:
+            status = str(event["status"])
+            counts[status] = counts.get(status, 0) + 1
+        print(json.dumps({"summary": args.summary, "counts": counts, "changed_roots": summary["changed_roots"]}, ensure_ascii=False, indent=2))
         return 0
 
     if args.command == "check":

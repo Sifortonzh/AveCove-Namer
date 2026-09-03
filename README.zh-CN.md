@@ -4,7 +4,18 @@
 
 [English](README.md)
 
-> 当前版本：v0.2.3 alpha。请先选择一个小目录试运行，并在执行前逐条审核计划。
+> 当前版本：v0.3.0 alpha。请先选择一个小目录试运行，并在执行前逐条审核计划。
+
+## Detective 自动侦测
+
+`avecove-namer detect` 会为一个或多个 OpenList 监控目录中的直属影视目录建立指纹，以后只处理新增或发生变化的作品。已有 `{tmdb=...}` 标识的目录可以直接确认身份；未标识的新目录只有在标题、年份和 TMDB 构成唯一高置信匹配时才会自动执行。模糊匹配和存在冲突的计划只进入待审核清单，不会改名。
+
+附带的低负载服务器脚本默认监控光鸭四个剧集目录，保存状态和回滚记录，只刷新发生变化的 STRM 路径，并通过 CPU、内存、I/O 和进程锁限制每小时运行一次。启用定时器前先建立一次基线：
+
+```bash
+sudo avecove-namer-detective --bootstrap
+sudo systemctl enable --now avecove-namer-detective.timer
+```
 
 AveCove Namer 是独立实现的云盘影视整理工具。默认剧集规则把稳定识别放在首位：加入剧集首播年份、省略非必要的单集标题，同时保留画质、来源、编码、音轨等有效封装信息。
 

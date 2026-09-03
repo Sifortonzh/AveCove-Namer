@@ -1,0 +1,56 @@
+#!/bin/sh
+set -eu
+
+openlist_url=${AVECOVE_OPENLIST_URL:-http://127.0.0.1:5245}
+openlist_token=${AVECOVE_OPENLIST_TOKEN_FILE:-/opt/docker/avecove-namer/secrets/openlist.token}
+tmdb_token=${AVECOVE_TMDB_TOKEN_FILE:-/opt/docker/avecove-namer/secrets/tmdb.token}
+state=${AVECOVE_DETECTIVE_STATE:-/opt/docker/avecove-namer/detective/state.json}
+work_dir=${AVECOVE_DETECTIVE_WORK:-/opt/docker/avecove-namer/detective/jobs}
+summary=${AVECOVE_DETECTIVE_SUMMARY:-/opt/docker/avecove-namer/detective/last-summary.json}
+refresh_worker=${AVECOVE_REFRESH_WORKER:-/opt/emby-strm/refresh-one-source-openlist-lowload.py}
+
+mkdir -p "$(dirname "$state")" "$work_dir"
+exec 9>/run/lock/avecove-namer-detective.lock
+if ! flock -n 9; then
+  echo "AveCove Detective is already running; this tick is skipped."
+  exit 0
+fi
+
+bootstrap=
+if [ "${1:-}" = "--bootstrap" ]; then
+  bootstrap=--bootstrap
+fi
+
+nice -n 15 ionice -c 3 avecove-namer detect \
+  --openlist-url "$openlist_url" \
+  --openlist-token-file "$openlist_token" \
+  --tmdb-token-file "$tmdb_token" \
+  --watch tv:/GuangYa/00剧/01美 \
+  --watch tv:/GuangYa/00剧/01中 \
+  --watch tv:/GuangYa/00剧/01韩 \
+  --watch tv:/GuangYa/00剧/01日 \
+  --state "$state" \
+  --work-dir "$work_dir" \
+  --summary "$summary" \
+  --max-operations 200 \
+  --title-style auto \
+  --execute \
+  ${bootstrap:+$bootstrap}
+
+if [ -x "$refresh_worker" ]; then
+  python3 - "$summary" <<'PY' | while IFS= read -r prefix; do
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    summary = json.load(handle)
+for root in summary.get("changed_roots", []):
+    print(root)
+PY
+    REFRESH_CPU_LIMIT=0.35 \
+    REFRESH_ALLOW_CONTAINERS=__none__ \
+    REFRESH_PRESERVE_IMAGES=1 \
+    REFRESH_PRESERVE_SIDECARS=1 \
+      "$refresh_worker" --prefix "$prefix"
+  done
+fi

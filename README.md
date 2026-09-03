@@ -4,7 +4,18 @@ Safe, reviewable media naming for OpenList, Emby, Infuse, and SenPlayer.
 
 [简体中文](README.zh-CN.md)
 
-> Status: v0.2.3 alpha. Start with a small canary folder and review every plan before execution.
+> Status: v0.3.0 alpha. Start with a small canary folder and review every plan before execution.
+
+## Detective automation
+
+`avecove-namer detect` fingerprints the direct work folders under one or more watched OpenList roots. On a later run it plans only new or changed works. Existing `{tmdb=...}` tags are trusted; untagged works are applied only when title, year, and TMDB produce a unique high-confidence match. Ambiguous matches and conflicting plans are kept for review instead of being renamed.
+
+The included low-load server wrapper watches the four GuangYa TV roots, keeps state and rollback journals, refreshes only changed STRM prefixes, and is scheduled hourly with CPU, memory, I/O, and lock limits. Bootstrap the current library once before enabling its timer:
+
+```bash
+sudo avecove-namer-detective --bootstrap
+sudo systemctl enable --now avecove-namer-detective.timer
+```
 
 AveCove Namer is an independent, clean-room media naming tool built for cloud-drive libraries. Its default TV rule deliberately prioritizes reliable library matching over episode-title decoration:
 
