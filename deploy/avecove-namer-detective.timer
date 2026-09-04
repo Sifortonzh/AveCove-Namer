@@ -1,9 +1,9 @@
 [Unit]
-Description=Run AveCove Namer Detective every hour
+Description=Run AveCove Namer Detective every four hours
 
 [Timer]
 OnBootSec=20min
-OnUnitActiveSec=1h
+OnUnitActiveSec=4h
 RandomizedDelaySec=5min
 Persistent=true
 
