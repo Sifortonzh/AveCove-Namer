@@ -25,10 +25,46 @@ nice -n 15 ionice -c 3 avecove-namer detect \
   --openlist-url "$openlist_url" \
   --openlist-token-file "$openlist_token" \
   --tmdb-token-file "$tmdb_token" \
+  --watch tv:/123/00剧/01中 \
+  --watch tv:/123/00剧/01美 \
+  --watch tv:/123/00剧/01韩 \
+  --watch movie:/123/00影/01国 \
+  --watch movie:/123/00影/01外 \
+  --watch tv:/123/00漫/01中 \
+  --watch tv:/123/00综艺 \
+  --watch tv:/Baidu/00剧/01中 \
+  --watch tv:/Baidu/00剧/01美 \
+  --watch tv:/Baidu/00剧/01韩 \
+  --watch movie:/Baidu/00影/01国 \
+  --watch movie:/Baidu/00影/01外 \
+  --watch tv:/Baidu/00漫/01中 \
+  --watch tv:/Baidu/00漫/01日 \
+  --watch tv:/115/00剧/01中 \
+  --watch tv:/115/00剧/01日 \
+  --watch tv:/115/00剧/01美 \
+  --watch tv:/115/00剧/01英 \
+  --watch tv:/115/00剧/01韩 \
+  --watch tv:/115/00剧/02其他 \
+  --watch movie:/115/00影/01国 \
+  --watch movie:/115/00影/01外 \
+  --watch movie:/115/00影/01漫 \
+  --watch tv:/115/00漫/01中 \
+  --watch tv:/115/00漫/01日 \
+  --watch tv:/115/00漫/01美 \
+  --watch tv:/115/00综艺 \
+  --watch tv:/Quark/00剧/01中 \
+  --watch tv:/Quark/00剧/01美 \
+  --watch movie:/Quark/00影/01国 \
+  --watch tv:/Quark/00综 \
   --watch tv:/GuangYa/00剧/01美 \
   --watch tv:/GuangYa/00剧/01中 \
   --watch tv:/GuangYa/00剧/01韩 \
   --watch tv:/GuangYa/00剧/01日 \
+  --watch movie:/GuangYa/00影/01国 \
+  --watch movie:/GuangYa/00影/01外 \
+  --watch tv:/GuangYa/00漫/01中 \
+  --watch tv:/GuangYa/00漫/01日 \
+  --watch tv:/GuangYa/00综艺 \
   --state "$state" \
   --work-dir "$work_dir" \
   --summary "$summary" \
