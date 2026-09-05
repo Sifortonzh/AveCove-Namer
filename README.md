@@ -10,7 +10,7 @@ Safe, reviewable media naming for OpenList, Emby, Infuse, and SenPlayer.
 
 `avecove-namer detect` fingerprints the direct work folders under one or more watched OpenList roots. On a later run it plans only new or changed works. Existing `{tmdb=...}` tags are trusted; untagged works are applied only when title, year, and TMDB produce a unique high-confidence match. Ambiguous matches and conflicting plans are kept for review instead of being renamed.
 
-The included low-load server wrapper watches the four GuangYa TV roots, keeps state and rollback journals, refreshes only changed STRM prefixes, and is scheduled every four hours with CPU, memory, I/O, and lock limits. Bootstrap the current library once before enabling its timer:
+The included low-load server wrapper watches the four GuangYa TV roots, keeps state and rollback journals, and refreshes only changed STRM prefixes. It runs daily at 00:00, 02:00, 06:00, 10:00, 14:00, 18:00, and 23:00 in Asia/Shanghai, with CPU, memory, I/O, and lock limits. Missed runs are not replayed after downtime. Bootstrap the current library once before enabling its timer:
 
 ```bash
 sudo avecove-namer-detective --bootstrap
