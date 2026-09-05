@@ -8,6 +8,8 @@ Safe, reviewable media naming for OpenList, Emby, Infuse, and SenPlayer.
 
 ## Detective automation
 
+OpenList rename pacing can be configured per storage with a JSON file at `/opt/docker/avecove-namer/rate-limits.json` (override with `AVECOVE_NAMER_RATE_PROFILE`). Keys are `/123`, `/Baidu`, `/Quark`, and `/GuangYa`; values are additional seconds between completed rename requests. Zero keeps requests sequential without an artificial delay. Unconfigured storage, including `/115`, retains the default three seconds. Provider errors restore a minimum three-second delay for that storage in the current process and trigger exponential retry backoff. Short directory probes do not establish a provider's long-term file-operation limit.
+
 `avecove-namer detect` fingerprints the direct work folders under one or more watched OpenList roots. On a later run it plans only new or changed works. Existing `{tmdb=...}` tags are trusted; untagged works are applied only when title, year, and TMDB produce a unique high-confidence match. Ambiguous matches and conflicting plans are kept for review instead of being renamed.
 
 The included low-load server wrapper watches the four GuangYa TV roots, keeps state and rollback journals, and refreshes only changed STRM prefixes. It runs daily at 00:00, 02:00, 06:00, 10:00, 14:00, 18:00, and 23:00 in Asia/Shanghai, with CPU, memory, I/O, and lock limits. Missed runs are not replayed after downtime. Bootstrap the current library once before enabling its timer:

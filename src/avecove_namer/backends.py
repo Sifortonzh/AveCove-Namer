@@ -87,6 +87,16 @@ class OpenListBackend(StorageBackend):
         self.rename_interval = rename_interval
         self.rename_retries = rename_retries
         self._last_rename_at = 0.0
+        self.rate_profile: dict[str, float] = {}
+        profile_path = Path(os.environ.get('AVECOVE_NAMER_RATE_PROFILE', '/opt/docker/avecove-namer/rate-limits.json'))
+        if profile_path.is_file():
+            try:
+                profile = json.loads(profile_path.read_text(encoding='utf-8'))
+                for root, interval in profile.items():
+                    if root in {'/123', '/Baidu', '/Quark', '/GuangYa'} and isinstance(interval, (int, float)) and 0 <= interval <= 30:
+                        self.rate_profile[root] = float(interval)
+            except (OSError, ValueError, AttributeError):
+                pass
         if not self.base_url.startswith(("http://", "https://")):
             raise BackendError("OpenList URL must start with http:// or https://")
         if not self.token:
@@ -159,13 +169,15 @@ class OpenListBackend(StorageBackend):
         return any(str(item.get("name")) == name for item in self._list(parent))
 
     def _rename_once(self, source_path: PurePosixPath, target_path: PurePosixPath) -> None:
+        root = '/' + source_path.parts[1]
+        interval = self.rate_profile.get(root, self.rename_interval)
         payload = {
             "path": str(source_path),
             "name": target_path.name,
             "overwrite": False,
         }
         for attempt in range(self.rename_retries + 1):
-            wait = self.rename_interval - (time.monotonic() - self._last_rename_at)
+            wait = interval - (time.monotonic() - self._last_rename_at)
             if wait > 0:
                 time.sleep(wait)
             try:
@@ -173,9 +185,13 @@ class OpenListBackend(StorageBackend):
                 self._last_rename_at = time.monotonic()
                 return
             except BackendError:
+                if root in self.rate_profile:
+                    interval = max(3.0, interval)
+                    self.rate_profile[root] = interval
                 if attempt >= self.rename_retries:
                     raise
-                time.sleep(self.rename_interval)
+                # Back off on provider errors even when normal requests are fast.
+                time.sleep(max(3.0, interval) * (2 ** attempt))
 
     def rename(self, source: str, target: str) -> None:
         source_path = PurePosixPath(source)

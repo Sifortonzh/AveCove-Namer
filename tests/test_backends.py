@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from avecove_namer.backends import BackendError, OpenListBackend
@@ -17,6 +19,15 @@ class RecordingOpenListBackend(OpenListBackend):
 
 
 class OpenListBackendTests(unittest.TestCase):
+    def test_speed_profile_excludes_115_and_invalid_intervals(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            profile = Path(tmp) / 'rates.json'
+            profile.write_text('{"/123":0.25,"/Baidu":0.5,"/115":0,"/Quark":-1}')
+            with patch.dict('os.environ', {'AVECOVE_NAMER_RATE_PROFILE': str(profile)}):
+                backend = RecordingOpenListBackend()
+            self.assertEqual(backend.rate_profile, {'/123': 0.25, '/Baidu': 0.5})
+            self.assertEqual(backend.rename_interval, 3.0)
+
     def test_detective_can_force_a_fresh_directory_listing(self):
         backend = RecordingOpenListBackend()
         backend.list_directories("/GuangYa/00剧/01韩", refresh=True)
