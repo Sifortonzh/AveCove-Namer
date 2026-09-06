@@ -19,6 +19,21 @@ class PlannerTests(unittest.TestCase):
         self.assertTrue(targets["rename_video"].endswith("Modern.Family.2009.S01E01.1080p.BluRay.x265.DTS.mkv"))
         self.assertTrue(targets["rename_subtitle"].endswith("Modern.Family.2009.S01E01.1080p.BluRay.x265.DTS.zh-CN.sup"))
 
+    def test_numbered_subtitle_in_separate_folder_moves_next_to_video(self):
+        root = "/TV/神探狄仁杰（2004）"
+        release = f"{root}/Detective.Dee.S01.EP01-30.2160p"
+        entries = [
+            Entry(f"{release}/神探狄仁杰.2004.S01E01.2160p.WEB-DL.HEVC.AAC.mp4", size=100),
+            Entry(f"{release}/字幕/01.ass", size=20),
+        ]
+        plan = make_plan(entries, root, "openlist", NamingPolicy())
+        subtitle = next(operation for operation in plan.operations if operation.kind == "rename_subtitle")
+        self.assertEqual(
+            subtitle.target,
+            f"{release}/神探狄仁杰.2004.S01E01.2160p.WEB-DL.HEVC.AAC.zh-CN.ass",
+        )
+        self.assertEqual(subtitle.source, f"{release}/字幕/01.ass")
+
     def test_missing_episode_year_is_skipped(self):
         root = "/TV/Unknown Show/Season 01"
         entries = [Entry(f"{root}/Unknown.Show.S01E01.1080p.WEB-DL.mkv")]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
@@ -35,6 +36,22 @@ def _episode_key(name: str) -> tuple[int, int] | None:
     return int(parsed.season), int(parsed.episode)
 
 
+def _subtitle_episode_key(entry: Entry) -> tuple[int, int] | None:
+    parsed = _episode_key(entry.name)
+    if parsed:
+        return parsed
+    stem = PurePosixPath(entry.name).stem
+    if not re.fullmatch(r"0*\d{1,3}", stem):
+        return None
+    episode = int(stem)
+    for part in reversed(PurePosixPath(entry.path).parts[:-1]):
+        normalized = part.replace("第", "Season ").replace("季", "")
+        match = re.search(r"(?i)(?:^|[^a-z0-9])s(?:eason)?[ ._-]*0*(\d{1,2})(?:[^0-9]|$)", normalized)
+        if match:
+            return int(match.group(1)), episode
+    return None
+
+
 def make_plan(
     entries: list[Entry],
     root: str,
@@ -62,6 +79,7 @@ def make_plan(
 
     video_targets: dict[str, str] = {}
     episode_targets: dict[tuple[str, int, int], str] = {}
+    global_episode_targets: dict[tuple[int, int], list[str]] = defaultdict(list)
 
     for entry in entries:
         extension = extension_of(entry.name)
@@ -97,6 +115,7 @@ def make_plan(
             video_targets[entry.path] = target
         if parsed.kind == "episode":
             episode_targets[(entry.parent, int(parsed.season), int(parsed.episode))] = target
+            global_episode_targets[(int(parsed.season), int(parsed.episode))].append(target)
 
     if rename_root_folder:
         root_path = PurePosixPath(root.rstrip("/"))
@@ -123,8 +142,11 @@ def make_plan(
             extension = extension_of(entry.name)
             if extension not in SUBTITLE_EXTENSIONS:
                 continue
-            key = _episode_key(entry.name)
+            key = _subtitle_episode_key(entry)
             video_target = episode_targets.get((parent, *key)) if key else None
+            if not video_target and key:
+                candidates = global_episode_targets.get(key, [])
+                video_target = candidates[0] if len(candidates) == 1 else None
             if not video_target:
                 candidates = [target for source, target in video_targets.items() if PurePosixPath(source).parent == PurePosixPath(entry.path).parent]
                 video_target = candidates[0] if len(candidates) == 1 else None
@@ -132,7 +154,7 @@ def make_plan(
                 plan.skipped.append({"path": entry.path, "reason": "subtitle_video_pair_ambiguous"})
                 continue
             target_name = build_subtitle_name(PurePosixPath(video_target).name, entry.name, policy)
-            target = sibling_path(entry.path, target_name)
+            target = str(PurePosixPath(video_target).parent / target_name)
             if target == entry.path:
                 plan.skipped.append({"path": entry.path, "reason": "subtitle_already_compliant"})
                 continue

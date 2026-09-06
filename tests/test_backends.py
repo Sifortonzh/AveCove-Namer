@@ -52,10 +52,18 @@ class OpenListBackendTests(unittest.TestCase):
             ),
         )
 
-    def test_rename_cannot_move_between_directories(self):
+    def test_cross_directory_rename_uses_temporary_move_sequence(self):
         backend = RecordingOpenListBackend()
-        with self.assertRaises(BackendError):
-            backend.rename("/115/a/file.mkv", "/115/b/file.mkv")
+        backend.rename_interval = 0
+        backend.rename("/115/a/01.ass", "/115/b/Show.S01E01.ass")
+        self.assertEqual([call[0] for call in backend.recorded_calls], ["/api/fs/rename", "/api/fs/move", "/api/fs/rename"])
+        temporary = backend.recorded_calls[0][1]["name"]
+        self.assertEqual(
+            backend.recorded_calls[1][1],
+            {"src_dir": "/115/a", "dst_dir": "/115/b", "names": [temporary]},
+        )
+        self.assertEqual(backend.recorded_calls[2][1]["path"], f"/115/b/{temporary}")
+        self.assertEqual(backend.recorded_calls[2][1]["name"], "Show.S01E01.ass")
 
     def test_case_only_rename_uses_a_temporary_name(self):
         backend = RecordingOpenListBackend()

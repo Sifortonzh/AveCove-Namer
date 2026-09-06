@@ -65,8 +65,7 @@ class LocalBackend(StorageBackend):
             raise BackendError(f"Source disappeared: {source}")
         if target_path.exists():
             raise BackendError(f"Target already exists: {target}")
-        if source_path.parent != target_path.parent:
-            raise BackendError("v0.1 only permits in-place renames")
+        target_path.parent.mkdir(parents=True, exist_ok=True)
         source_path.rename(target_path)
 
 
@@ -103,21 +102,29 @@ class OpenListBackend(StorageBackend):
             raise BackendError("OpenList token is empty")
 
     def _request(self, endpoint: str, payload: dict[str, object]) -> dict[str, object]:
-        request = urllib.request.Request(
-            self.base_url + endpoint,
-            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            headers={
-                "Authorization": self.token,
-                "Content-Type": "application/json",
-                "User-Agent": "AveCove-Namer/0.1",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                data = json.load(response)
-        except (urllib.error.URLError, json.JSONDecodeError) as exc:
-            raise BackendError(f"OpenList request failed: {exc}") from exc
+        last_error: Exception | None = None
+        for attempt in range(self.rename_retries + 1):
+            request = urllib.request.Request(
+                self.base_url + endpoint,
+                data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                headers={
+                    "Authorization": self.token,
+                    "Content-Type": "application/json",
+                    "User-Agent": "AveCove-Namer/0.1",
+                },
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    data = json.load(response)
+                break
+            except (TimeoutError, urllib.error.URLError, json.JSONDecodeError) as exc:
+                last_error = exc
+                if attempt >= self.rename_retries:
+                    raise BackendError(f"OpenList request failed after retries: {exc}") from exc
+                time.sleep(3.0 * (2**attempt))
+        else:  # pragma: no cover - defensive, loop always returns or raises
+            raise BackendError(f"OpenList request failed: {last_error}")
         if int(data.get("code", 0)) not in {200, 201}:
             raise BackendError(f"OpenList API error: {data.get('message', 'unknown error')}")
         result = data.get("data")
@@ -193,11 +200,53 @@ class OpenListBackend(StorageBackend):
                 # Back off on provider errors even when normal requests are fast.
                 time.sleep(max(3.0, interval) * (2 ** attempt))
 
+    def _move_once(self, source_path: PurePosixPath, target_parent: PurePosixPath) -> None:
+        root = "/" + source_path.parts[1]
+        interval = self.rate_profile.get(root, self.rename_interval)
+        payload = {
+            "src_dir": str(source_path.parent),
+            "dst_dir": str(target_parent),
+            "names": [source_path.name],
+        }
+        for attempt in range(self.rename_retries + 1):
+            wait = interval - (time.monotonic() - self._last_rename_at)
+            if wait > 0:
+                time.sleep(wait)
+            try:
+                self._request("/api/fs/move", payload)
+                self._last_rename_at = time.monotonic()
+                return
+            except BackendError:
+                if root in self.rate_profile:
+                    interval = max(3.0, interval)
+                    self.rate_profile[root] = interval
+                if attempt >= self.rename_retries:
+                    raise
+                time.sleep(max(3.0, interval) * (2**attempt))
+
     def rename(self, source: str, target: str) -> None:
         source_path = PurePosixPath(source)
         target_path = PurePosixPath(target)
         if source_path.parent != target_path.parent:
-            raise BackendError("v0.1 only permits in-place OpenList renames")
+            temporary = source_path.parent / f".avecove-namer-{uuid4().hex[:12]}.tmp"
+            self._rename_once(source_path, temporary)
+            try:
+                self._move_once(temporary, target_path.parent)
+                moved = target_path.parent / temporary.name
+                self._rename_once(moved, target_path)
+            except BackendError:
+                # Best-effort rollback from either possible intermediate location.
+                try:
+                    moved = target_path.parent / temporary.name
+                    self._move_once(moved, source_path.parent)
+                except BackendError:
+                    pass
+                try:
+                    self._rename_once(temporary, source_path)
+                except BackendError:
+                    pass
+                raise
+            return
         if source_path.name != target_path.name and source_path.name.casefold() == target_path.name.casefold():
             temporary_path = source_path.parent / f".avecove-namer-{uuid4().hex[:12]}.tmp"
             self._rename_once(source_path, temporary_path)
