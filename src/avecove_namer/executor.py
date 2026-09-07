@@ -56,9 +56,23 @@ def execute_plan(
         raise ExecutionError("Journal already contains an earlier run; use a new journal path")
     journal_file.parent.mkdir(parents=True, exist_ok=True)
     for operation in plan.operations:
-        if not backend.exists(operation.source):
+        source_exists = backend.exists(operation.source)
+        target_exists = backend.exists(operation.target)
+        if not source_exists and target_exists:
+            row = {
+                "timestamp": _now(),
+                "source": operation.source,
+                "target": operation.target,
+                "kind": operation.kind,
+                "reconciled": "true",
+            }
+            journal.append(row)
+            with journal_file.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+            continue
+        if not source_exists:
             raise ExecutionError(f"Source is stale or missing: {operation.source}")
-        if backend.exists(operation.target):
+        if target_exists:
             raise ExecutionError(f"Target appeared after planning: {operation.target}")
         try:
             backend.rename(operation.source, operation.target)

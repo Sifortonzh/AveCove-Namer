@@ -58,6 +58,30 @@ class ExecutorTests(unittest.TestCase):
             with self.assertRaises(ExecutionError):
                 execute_plan(plan, backend, str(journal), execute=True, confirm_root=str(root), confirm_count=1)
 
+    def test_completed_remote_rename_is_reconciled_after_interruption(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "Mr. Robot (2015)" / "Season 01"
+            root.mkdir(parents=True)
+            source = root / "Mr.Robot.S01E01.mkv"
+            source.touch()
+            backend = LocalBackend()
+            plan = make_plan(backend.scan(str(root.parent)), str(root.parent), "local", NamingPolicy())
+            operation = plan.operations[0]
+            Path(operation.source).rename(operation.target)
+
+            journal = Path(temp) / "resume.jsonl"
+            completed = execute_plan(
+                plan,
+                backend,
+                str(journal),
+                execute=True,
+                confirm_root=str(root.parent),
+                confirm_count=1,
+            )
+
+            self.assertEqual(completed[0]["reconciled"], "true")
+            self.assertTrue(Path(operation.target).exists())
+
     def test_media_and_root_folder_round_trip(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "Kill Bill 1"
