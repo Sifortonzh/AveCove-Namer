@@ -23,7 +23,7 @@ TMDB_SUFFIX_RE = re.compile(r"\s*\{tmdb\s*(?:=|-)\s*\d+\}\s*$", re.IGNORECASE)
 TECHNICAL_START_RE = re.compile(
     r"(?i)(?:^|[ ._-])(?:"
     r"2160p|1080p|1080i|720p|576p|480p|4k|uhd|bluray|blu-ray|bdrip|brrip|"
-    r"remux|web-dl|webdl|webrip|hdtv|dvdrip|hdr10\+?|hdr|dolby[ ._-]*vision|dv|"
+    r"remux|web-dl|webdl|webrip|hdtv|dvdrip|hdr10\+?|hdr|sdr|dolby[ ._-]*vision|dv|"
     r"x26[45]|h\.?26[45]|hevc|av1|avc|dts(?:-hd)?|truehd|atmos|ddp?\d(?:\.\d)?|"
     r"aac|flac|opus|10bit|8bit"
     r")(?:$|[ ._-])"
@@ -131,7 +131,7 @@ def technical_tail(value: str) -> tuple[str, ...]:
     return canonicalize_tail(value[match.start():])
 
 
-def parse_media_name(name: str) -> ParsedMedia:
+def parse_media_name(name: str, allow_bare_episode: bool = False) -> ParsedMedia:
     extension = extension_of(name)
     stem = name[: -len(extension)] if extension else name
     episode_match = EPISODE_RE.search(stem) or ALT_EPISODE_RE.search(stem)
@@ -152,6 +152,21 @@ def parse_media_name(name: str) -> ParsedMedia:
             episode=int(episode_match.group("episode")),
             technical_tail=tail,
         )
+
+    if allow_bare_episode:
+        bare_episode = re.match(r"^(?P<episode>\d{1,3})(?=[ ._-])", stem)
+        if bare_episode:
+            tail = technical_tail(stem[bare_episode.end():])
+            if tail:
+                return ParsedMedia(
+                    source_name=name,
+                    kind="episode",
+                    extension=extension,
+                    title="",
+                    season=1,
+                    episode=int(bare_episode.group("episode")),
+                    technical_tail=tail,
+                )
 
     year_matches = list(YEAR_RE.finditer(stem))
     year = int(year_matches[-1].group(1)) if year_matches else None

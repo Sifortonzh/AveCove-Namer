@@ -37,6 +37,17 @@ class NamingTests(unittest.TestCase):
             "甄嬛传.2011.S01E76.2160p.WEB-DL.H265.mp4",
         )
 
+    def test_bare_numbered_tv_episode_is_supported_when_explicitly_enabled(self):
+        parsed = parse_media_name(
+            "161.SDR.8bit.2160p.60fps.DDP5.1.WEB-DL.H265.mp4",
+            allow_bare_episode=True,
+        )
+        self.assertEqual((parsed.kind, parsed.season, parsed.episode), ("episode", 1, 161))
+        self.assertEqual(
+            build_video_name(parsed, NamingPolicy(), "斗罗大陆II绝世唐门", 2023),
+            "斗罗大陆II绝世唐门.2023.S01E161.SDR.8bit.2160p.60fps.DDP5.1.WEB-DL.H265.mp4",
+        )
+
     def test_movie_year_and_release_data_are_preserved(self):
         parsed = parse_media_name("The.Godfather.1972.2160p.UHD.BluRay.REMUX.DV.HDR.mkv")
         self.assertEqual(parsed.year, 1972)

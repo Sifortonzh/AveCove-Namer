@@ -220,6 +220,7 @@ def run(args: argparse.Namespace) -> int:
             rename_root_folder,
             args.tmdb_id,
             primary_language,
+            args.media_kind,
         )
         for operation in rename_plan.operations:
             if operation.kind == "rename_directory" and backend.exists(operation.target):

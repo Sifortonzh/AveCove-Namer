@@ -62,6 +62,7 @@ def make_plan(
     rename_root_folder: bool | None = None,
     tmdb_id: int | None = None,
     primary_language: str | None = None,
+    media_kind: str | None = None,
 ) -> RenamePlan:
     if rename_root_folder is None:
         rename_root_folder = tmdb_id is not None
@@ -85,7 +86,7 @@ def make_plan(
         extension = extension_of(entry.name)
         if extension not in VIDEO_EXTENSIONS:
             continue
-        parsed = parse_media_name(entry.name)
+        parsed = parse_media_name(entry.name, allow_bare_episode=media_kind == "tv")
         context_title, context_year = infer_context(entry.path)
         resolved_title = title_override or context_title or parsed.title
         resolved_year = year_override or context_year or parsed.year

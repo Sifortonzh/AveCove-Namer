@@ -194,6 +194,7 @@ def run_detective(
                 True,
                 tmdb_id,
                 str(resolved["primary_language"]),
+                watch.kind,
             )
             for operation in plan.operations:
                 if operation.kind == "rename_directory" and backend.exists(operation.target):
@@ -257,6 +258,7 @@ def run_detective(
                 True,
                 tmdb_id,
                 str(resolved["primary_language"]),
+                watch.kind,
             )
             write_plan(verify, str(job / "verify.json"))
             if verify.operations or verify.conflicts:
