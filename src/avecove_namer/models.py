@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
 
-MediaKind = Literal["movie", "episode", "subtitle", "other"]
+MediaKind = Literal["movie", "episode", "disc", "subtitle", "other"]
 OperationKind = Literal["rename_video", "rename_subtitle", "rename_directory"]
 
 
@@ -34,6 +34,8 @@ class ParsedMedia:
     year: int | None = None
     season: int | None = None
     episode: int | None = None
+    episode_end: int | None = None
+    disc: int | None = None
     technical_tail: tuple[str, ...] = ()
 
 

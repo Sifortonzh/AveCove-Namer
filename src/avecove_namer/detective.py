@@ -20,6 +20,7 @@ from .tmdb import TMDBClient
 
 TMDB_ID_RE = re.compile(r"\{tmdb\s*(?:=|-)\s*(?P<id>\d+)\}", re.IGNORECASE)
 YEAR_RE = re.compile(r"(?<!\d)(?P<year>19\d{2}|20\d{2})(?!\d)")
+SEASON_RE = re.compile(r"(?i)(?:season[ ._-]*|(?<![a-z0-9])s)0*(\d{1,2})(?=(?:e\d|d\d|[^0-9]|$))")
 
 
 @dataclass(frozen=True)
@@ -104,6 +105,14 @@ def fingerprint(entries: Iterable[object]) -> str:
     return digest.hexdigest()
 
 
+def season_numbers(entries: Iterable[object]) -> set[int]:
+    seasons: set[int] = set()
+    for entry in entries:
+        for match in SEASON_RE.finditer(str(entry.path)):
+            seasons.add(int(match.group(1)))
+    return seasons
+
+
 def load_state(path: Path) -> dict[str, object]:
     if not path.exists():
         return {"version": 1, "works": {}}
@@ -146,6 +155,7 @@ def run_detective(
     execute: bool = False,
     bootstrap: bool = False,
     max_operations: int = 200,
+    max_seasons: int = 0,
     title_style: str = "auto",
 ) -> dict[str, object]:
     state = load_state(state_path)
@@ -164,6 +174,18 @@ def run_detective(
             changed = previous.get(work_path) != signature
             if bootstrap or not changed:
                 events.append({"path": work_path, "status": "baseline" if bootstrap else "unchanged"})
+                continue
+
+            seasons = season_numbers(entries) if watch.kind == "tv" else set()
+            if max_seasons and len(seasons) > max_seasons:
+                events.append(
+                    {
+                        "path": work_path,
+                        "status": "skipped",
+                        "reason": f"season limit exceeded ({len(seasons)} > {max_seasons})",
+                        "seasons": sorted(seasons),
+                    }
+                )
                 continue
 
             title, year = infer_search_terms(PurePosixPath(work_path).name)

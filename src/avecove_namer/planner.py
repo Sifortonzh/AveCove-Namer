@@ -90,7 +90,7 @@ def make_plan(
         context_title, context_year = infer_context(entry.path)
         resolved_title = title_override or context_title or parsed.title
         resolved_year = year_override or context_year or parsed.year
-        if parsed.kind == "episode" and policy.include_series_year and not resolved_year:
+        if parsed.kind in {"episode", "disc"} and policy.include_series_year and not resolved_year:
             plan.skipped.append({"path": entry.path, "reason": "series_year_missing"})
             continue
         if parsed.kind == "movie" and not resolved_year:
@@ -107,7 +107,7 @@ def make_plan(
                     source=entry.path,
                     target=target,
                     kind="rename_video",
-                    reason="year_aware_episode_name" if parsed.kind == "episode" else "movie_name",
+                    reason="year_aware_episode_name" if parsed.kind in {"episode", "disc"} else "movie_name",
                     confidence=0.96 if resolved_year and resolved_title else 0.75,
                     source_size=entry.size,
                     source_modified=entry.modified,

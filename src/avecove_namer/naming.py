@@ -9,14 +9,24 @@ from .models import ParsedMedia
 
 
 VIDEO_EXTENSIONS = {
-    ".mkv", ".mp4", ".m4v", ".mov", ".avi", ".ts", ".m2ts", ".wmv", ".flv", ".webm"
+    ".mkv", ".mp4", ".m4v", ".mov", ".avi", ".ts", ".m2ts", ".wmv", ".flv", ".webm", ".iso"
 }
 SUBTITLE_EXTENSIONS = {".srt", ".ass", ".ssa", ".sup", ".sub", ".vtt", ".smi", ".idx"}
 YEAR_RE = re.compile(r"(?<!\d)(19\d{2}|20\d{2})(?!\d)")
 EPISODE_RE = re.compile(
-    r"(?i)(?<![A-Za-z0-9])S(?P<season>\d{1,2})[ ._-]*E(?:P)?(?P<episode>\d{1,3})(?!\d)"
+    r"(?i)(?<![A-Za-z0-9])(?:S|Season[ ._-]*)(?P<season>\d{1,2})"
+    r"[ ._-]*E(?:P)?(?P<episode>\d{1,3})(?!\d)"
+)
+EPISODE_RANGE_RE = re.compile(
+    r"(?i)(?<![A-Za-z0-9])S(?P<season>\d{1,2})[ ._-]*E(?:P)?(?P<episode>\d{1,3})"
+    r"[ ._-]*-[ ._-]*E(?:P)?(?P<episode_end>\d{1,3})(?!\d)"
+)
+DISC_RE = re.compile(
+    r"(?i)(?<![A-Za-z0-9])S(?P<season>\d{1,2})[ ._-]*D(?P<disc>\d{1,2})(?!\d)"
 )
 ALT_EPISODE_RE = re.compile(r"(?i)(?<!\d)(?P<season>\d{1,2})x(?P<episode>\d{1,3})(?!\d)")
+BARE_E_RE = re.compile(r"(?i)(?<![A-Za-z0-9])E(?:P)?(?P<episode>\d{1,3})(?!\d)")
+TRAILING_EPISODE_RE = re.compile(r"(?:^|[ ._-])(?P<episode>\d{1,3})$")
 FOLDER_YEAR_RE = re.compile(r"^(?P<title>.+?)\s*[\[(](?P<year>19\d{2}|20\d{2})[\])]$")
 TMDB_SUFFIX_RE = re.compile(r"\s*\{tmdb\s*(?:=|-)\s*\d+\}\s*$", re.IGNORECASE)
 
@@ -51,6 +61,10 @@ CANONICAL_TECH = {
     "truehd": "TrueHD",
     "atmos": "Atmos",
 }
+VARIANT_TAG_RE = re.compile(
+    r"(?i)(?:^|[ ._\-[(])(?P<tag>粤语|国语|普通话|英语|韩语|日语|台配|国配|中配|"
+    r"cantonese|mandarin|english|korean|japanese)(?=$|[ ._\-\])])"
+)
 
 
 @dataclass(frozen=True)
@@ -126,22 +140,27 @@ def canonicalize_tail(value: str) -> tuple[str, ...]:
 
 def technical_tail(value: str) -> tuple[str, ...]:
     match = TECHNICAL_START_RE.search(value)
-    if not match:
-        return ()
-    return canonicalize_tail(value[match.start():])
+    technical = canonicalize_tail(value[match.start():]) if match else ()
+    variants = tuple(match.group("tag") for match in VARIANT_TAG_RE.finditer(value))
+    return tuple(dict.fromkeys(variants)) + technical
 
 
 def parse_media_name(name: str, allow_bare_episode: bool = False) -> ParsedMedia:
     extension = extension_of(name)
     stem = name[: -len(extension)] if extension else name
-    episode_match = EPISODE_RE.search(stem) or ALT_EPISODE_RE.search(stem)
+    episode_range_match = EPISODE_RANGE_RE.search(stem)
+    episode_match = episode_range_match or EPISODE_RE.search(stem) or ALT_EPISODE_RE.search(stem)
     if episode_match:
         prefix = stem[:episode_match.start()]
         year_matches = list(YEAR_RE.finditer(prefix))
         year = int(year_matches[-1].group(1)) if year_matches else None
         if year_matches:
             prefix = prefix[:year_matches[-1].start()]
-        tail = technical_tail(stem[episode_match.end():])
+        prefix_tail = technical_tail(prefix)
+        if prefix_tail:
+            marker = TECHNICAL_START_RE.search(prefix)
+            prefix = prefix[:marker.start()] if marker else prefix
+        tail = tuple(dict.fromkeys(prefix_tail + technical_tail(stem[episode_match.end():])))
         return ParsedMedia(
             source_name=name,
             kind="episode",
@@ -150,23 +169,49 @@ def parse_media_name(name: str, allow_bare_episode: bool = False) -> ParsedMedia
             year=year,
             season=int(episode_match.group("season")),
             episode=int(episode_match.group("episode")),
+            episode_end=int(episode_range_match.group("episode_end")) if episode_range_match else None,
             technical_tail=tail,
         )
 
+    disc_match = DISC_RE.search(stem)
+    if disc_match:
+        prefix = stem[:disc_match.start()]
+        year_matches = list(YEAR_RE.finditer(prefix))
+        year = int(year_matches[-1].group(1)) if year_matches else None
+        if year_matches:
+            prefix = prefix[:year_matches[-1].start()]
+        return ParsedMedia(
+            source_name=name,
+            kind="disc",
+            extension=extension,
+            title=display_title(prefix),
+            year=year,
+            season=int(disc_match.group("season")),
+            disc=int(disc_match.group("disc")),
+            technical_tail=technical_tail(stem[disc_match.end():]),
+        )
+
     if allow_bare_episode:
-        bare_episode = re.match(r"^(?P<episode>\d{1,3})(?=[ ._-])", stem)
+        bare_episode = BARE_E_RE.search(stem) or TRAILING_EPISODE_RE.search(stem)
+        if not bare_episode:
+            bare_episode = re.match(r"^(?P<episode>\d{1,3})(?=[ ._-])", stem)
         if bare_episode:
             tail = technical_tail(stem[bare_episode.end():])
-            if tail:
-                return ParsedMedia(
-                    source_name=name,
-                    kind="episode",
-                    extension=extension,
-                    title="",
-                    season=1,
-                    episode=int(bare_episode.group("episode")),
-                    technical_tail=tail,
-                )
+            prefix = stem[:bare_episode.start()]
+            year_matches = list(YEAR_RE.finditer(prefix))
+            year = int(year_matches[-1].group(1)) if year_matches else None
+            if year_matches:
+                prefix = prefix[:year_matches[-1].start()]
+            return ParsedMedia(
+                source_name=name,
+                kind="episode",
+                extension=extension,
+                title=display_title(prefix),
+                year=year,
+                season=1,
+                episode=int(bare_episode.group("episode")),
+                technical_tail=tail,
+            )
 
     year_matches = list(YEAR_RE.finditer(stem))
     year = int(year_matches[-1].group(1)) if year_matches else None
@@ -215,7 +260,14 @@ def build_video_name(
     if parsed.kind == "episode":
         if policy.include_series_year and resolved_year:
             parts.append(str(resolved_year))
-        parts.append(f"S{parsed.season:02d}E{parsed.episode:02d}")
+        episode_token = f"S{parsed.season:02d}E{parsed.episode:02d}"
+        if parsed.episode_end is not None:
+            episode_token += f"-E{parsed.episode_end:02d}"
+        parts.append(episode_token)
+    elif parsed.kind == "disc":
+        if policy.include_series_year and resolved_year:
+            parts.append(str(resolved_year))
+        parts.append(f"S{parsed.season:02d}D{parsed.disc:02d}")
     elif resolved_year:
         parts.append(str(resolved_year))
 

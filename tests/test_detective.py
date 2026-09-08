@@ -1,6 +1,7 @@
 import unittest
 
-from avecove_namer.detective import choose_tmdb_match, infer_search_terms, parse_watch
+from avecove_namer.detective import choose_tmdb_match, infer_search_terms, parse_watch, season_numbers
+from avecove_namer.models import Entry
 
 
 class DetectiveTests(unittest.TestCase):
@@ -44,6 +45,13 @@ class DetectiveTests(unittest.TestCase):
         )
         self.assertIsNone(match)
         self.assertEqual(score, 0.0)
+
+    def test_season_numbers_support_episode_and_disc_layouts(self):
+        entries = [
+            Entry("/TV/Show/Season 01/Show.S01E01.mkv"),
+            Entry("/TV/Show/Season 02/Show.S02D01.iso"),
+        ]
+        self.assertEqual(season_numbers(entries), {1, 2})
 
 
 if __name__ == "__main__":

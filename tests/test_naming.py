@@ -37,6 +37,50 @@ class NamingTests(unittest.TestCase):
             "甄嬛传.2011.S01E76.2160p.WEB-DL.H265.mp4",
         )
 
+    def test_multi_episode_iso_range_is_preserved(self):
+        parsed = parse_media_name("疑犯追踪(2011).S01E01-E06.第06集.iso")
+        self.assertEqual((parsed.season, parsed.episode, parsed.episode_end), (1, 1, 6))
+        self.assertEqual(
+            build_video_name(parsed, NamingPolicy(), "Person of Interest", 2011),
+            "Person.of.Interest.2011.S01E01-E06.iso",
+        )
+
+    def test_tv_bluray_iso_disc_is_preserved(self):
+        parsed = parse_media_name("Camelot.2011.S01.D03.1080p.BluRay.AVC.TrueHD.5.1.iso")
+        self.assertEqual((parsed.kind, parsed.season, parsed.disc), ("disc", 1, 3))
+        self.assertEqual(
+            build_video_name(parsed, NamingPolicy(), "Camelot", 2011),
+            "Camelot.2011.S01D03.1080p.BluRay.AVC.TrueHD.5.1.iso",
+        )
+
+    def test_season_word_episode_is_supported(self):
+        parsed = parse_media_name("Yellowstone.Season3E01.2020.1080p.BluRay.mkv")
+        self.assertEqual((parsed.kind, parsed.season, parsed.episode), ("episode", 3, 1))
+
+    def test_bare_e_episode_is_supported_for_tv(self):
+        parsed = parse_media_name(
+            "法医秦明.Medical.Examiner.Dr.Qin.2016.E01.1080p.WEB-DL.mp4",
+            allow_bare_episode=True,
+        )
+        self.assertEqual((parsed.kind, parsed.season, parsed.episode), ("episode", 1, 1))
+
+    def test_trailing_episode_number_is_supported_for_tv(self):
+        parsed = parse_media_name("温柔的背后 30.mp4", allow_bare_episode=True)
+        self.assertEqual((parsed.kind, parsed.season, parsed.episode), ("episode", 1, 30))
+
+    def test_language_variant_before_technical_tail_is_preserved(self):
+        parsed = parse_media_name("越狱.S04E22.粤语.2008.BluRay.REMUX.1080p.mkv")
+        self.assertEqual(parsed.technical_tail, ("粤语", "BluRay", "REMUX", "1080p"))
+
+    def test_technical_tail_before_episode_is_preserved(self):
+        parsed = parse_media_name(
+            "The Big Bang Theory 1080p BluRay REMUX AVC DTS-HD MA S09E23 - 第 23 集.mkv"
+        )
+        self.assertEqual(
+            build_video_name(parsed, NamingPolicy(), "The Big Bang Theory", 2007),
+            "The.Big.Bang.Theory.2007.S09E23.1080p.BluRay.REMUX.AVC.DTS-HD.MA.mkv",
+        )
+
     def test_bare_numbered_tv_episode_is_supported_when_explicitly_enabled(self):
         parsed = parse_media_name(
             "161.SDR.8bit.2160p.60fps.DDP5.1.WEB-DL.H265.mp4",
