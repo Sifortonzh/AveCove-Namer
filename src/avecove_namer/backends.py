@@ -154,7 +154,8 @@ class OpenListBackend(StorageBackend):
         normalized_root = "/" + root.strip("/") if root != "/" else "/"
         return sorted(
             (item for item in self._list(normalized_root, refresh=refresh) if bool(item.get("is_dir")) and item.get("name")),
-            key=lambda item: str(item.get("name", "")).casefold(),
+            key=lambda item: (str(item.get("modified") or ""), str(item.get("name", "")).casefold()),
+            reverse=True,
         )
 
     def scan(self, root: str, refresh: bool = False) -> list[Entry]:

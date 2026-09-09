@@ -34,6 +34,19 @@ class OpenListBackendTests(unittest.TestCase):
         self.assertEqual(backend.recorded[0], "/api/fs/list")
         self.assertTrue(backend.recorded[1]["refresh"])
 
+    def test_detective_scans_recently_modified_directories_first(self):
+        backend = RecordingOpenListBackend()
+        with patch.object(
+            backend,
+            "_list",
+            return_value=[
+                {"name": "Older", "is_dir": True, "modified": "2026-09-08T12:00:00+08:00"},
+                {"name": "Newest", "is_dir": True, "modified": "2026-09-09T12:00:00+08:00"},
+            ],
+        ):
+            directories = backend.list_directories("/115/00剧/01美", refresh=True)
+        self.assertEqual([item["name"] for item in directories], ["Newest", "Older"])
+
     def test_rename_uses_full_source_path_and_new_name(self):
         backend = RecordingOpenListBackend()
         backend.rename(
