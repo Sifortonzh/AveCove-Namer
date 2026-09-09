@@ -136,7 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
     detective.add_argument("--bootstrap", action="store_true", help="Record the current library without renaming")
     detective.add_argument("--execute", action="store_true", help="Apply only high-confidence, conflict-free plans")
     detective.add_argument("--max-operations", type=int, default=200)
-    detective.add_argument("--max-seasons", type=int, default=0, help="Skip changed TV folders above this season count; 0 disables the limit")
+    detective.add_argument("--max-seasons", type=int, default=0, help="Process at most this many TV seasons per run; remaining seasons continue next run; 0 disables the limit")
     detective.add_argument(
         "--title-style",
         choices=("auto", "english", "chinese", "original", "bilingual"),

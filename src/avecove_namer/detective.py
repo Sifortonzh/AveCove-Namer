@@ -11,16 +11,20 @@ from difflib import SequenceMatcher
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
-from .backends import OpenListBackend
+from .backends import BackendError, OpenListBackend
 from .executor import execute_plan
 from .naming import NamingPolicy
+from .models import Entry, RenamePlan
 from .planner import make_plan, write_plan
 from .tmdb import TMDBClient
 
 
 TMDB_ID_RE = re.compile(r"\{tmdb\s*(?:=|-)\s*(?P<id>\d+)\}", re.IGNORECASE)
 YEAR_RE = re.compile(r"(?<!\d)(?P<year>19\d{2}|20\d{2})(?!\d)")
+SEASON_PACK_RE = re.compile(r"(?i)\s*全\s*\d{1,2}\s*季.*$")
 SEASON_RE = re.compile(r"(?i)(?:season[ ._-]*|(?<![a-z0-9])s)0*(\d{1,2})(?=(?:e\d|d\d|[^0-9]|$))")
+CHINESE_SEASON_RE = re.compile(r"第[ ._-]*(\d{1,2}|[〇零一二两三四五六七八九十百]+)[ ._-]*季")
+CHINESE_DIGITS = {"〇": 0, "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
 
 
 @dataclass(frozen=True)
@@ -47,6 +51,7 @@ def infer_search_terms(folder_name: str) -> tuple[str | None, int | None]:
     year_matches = list(YEAR_RE.finditer(value))
     year = int(year_matches[-1].group("year")) if year_matches else None
     title = value[: year_matches[-1].start()] if year_matches else value
+    title = SEASON_PACK_RE.sub("", title)
     title = title.strip(" []【】()（）._-")
     title = re.sub(r"[._]+", " ", title)
     title = re.sub(r"\s+", " ", title).strip()
@@ -110,7 +115,62 @@ def season_numbers(entries: Iterable[object]) -> set[int]:
     for entry in entries:
         for match in SEASON_RE.finditer(str(entry.path)):
             seasons.add(int(match.group(1)))
+        for match in CHINESE_SEASON_RE.finditer(str(entry.path)):
+            value = match.group(1)
+            if value.isdigit():
+                seasons.add(int(value))
+            elif "百" in value:
+                hundreds, _, remainder = value.partition("百")
+                total = CHINESE_DIGITS.get(hundreds, 1) * 100
+                if remainder:
+                    value = remainder
+                    if "十" not in value:
+                        total += CHINESE_DIGITS.get(value, 0)
+                    else:
+                        tens, _, ones = value.partition("十")
+                        total += CHINESE_DIGITS.get(tens, 1) * 10 + CHINESE_DIGITS.get(ones, 0)
+                seasons.add(total)
+            elif "十" in value:
+                tens, _, ones = value.partition("十")
+                seasons.add(CHINESE_DIGITS.get(tens, 1) * 10 + CHINESE_DIGITS.get(ones, 0))
+            else:
+                seasons.add(CHINESE_DIGITS[value])
     return seasons
+
+
+def limit_plan_for_batch(plan: RenamePlan, max_seasons: int, max_operations: int) -> tuple[RenamePlan, bool, list[int]]:
+    operation_seasons: list[set[int]] = []
+    pending_seasons: set[int] = set()
+    for operation in plan.operations:
+        seasons = season_numbers([Entry(operation.source), Entry(operation.target)])
+        operation_seasons.append(seasons)
+        if operation.kind != "rename_directory":
+            pending_seasons.update(seasons)
+
+    selected_seasons = sorted(pending_seasons)
+    if max_seasons:
+        selected_seasons = selected_seasons[:max_seasons]
+    selected_set = set(selected_seasons)
+    operations = [
+        operation
+        for operation, seasons in zip(plan.operations, operation_seasons)
+        if operation.kind == "rename_directory" or not seasons or bool(seasons & selected_set)
+    ]
+    operations = operations[:max_operations]
+    selected_paths = {value for operation in operations for value in (operation.source, operation.target)}
+    conflicts = [conflict for conflict in plan.conflicts if any(path in conflict for path in selected_paths)]
+    limited = RenamePlan(
+        version=plan.version,
+        created_at=plan.created_at,
+        backend=plan.backend,
+        root=plan.root,
+        policy=plan.policy,
+        operations=operations,
+        conflicts=conflicts,
+        skipped=plan.skipped,
+    )
+    partial = len(operations) < len(plan.operations)
+    return limited, partial, selected_seasons
 
 
 def load_state(path: Path) -> dict[str, object]:
@@ -166,26 +226,26 @@ def run_detective(
     run_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
     for watch in watches:
-        for directory in backend.list_directories(watch.path, refresh=True):
+        try:
+            directories = backend.list_directories(watch.path, refresh=True)
+        except BackendError as exc:
+            events.append({"path": watch.path, "status": "scan_error", "reason": str(exc)})
+            continue
+        for directory in directories:
             work_path = str(PurePosixPath(watch.path) / str(directory["name"]))
-            entries = backend.scan(work_path, refresh=True)
+            try:
+                entries = backend.scan(work_path, refresh=True)
+            except BackendError as exc:
+                current[work_path] = f"pending:{previous.get(work_path, '')}"
+                events.append({"path": work_path, "status": "scan_error", "reason": str(exc)})
+                continue
             signature = fingerprint(entries)
             current[work_path] = signature
-            changed = previous.get(work_path) != signature
+            previous_signature = str(previous.get(work_path) or "")
+            canonical_folder = _tmdb_id_from_name(PurePosixPath(work_path).name) is not None
+            changed = previous_signature != signature or previous_signature.startswith("pending:") or not canonical_folder
             if bootstrap or not changed:
                 events.append({"path": work_path, "status": "baseline" if bootstrap else "unchanged"})
-                continue
-
-            seasons = season_numbers(entries) if watch.kind == "tv" else set()
-            if max_seasons and len(seasons) > max_seasons:
-                events.append(
-                    {
-                        "path": work_path,
-                        "status": "skipped",
-                        "reason": f"season limit exceeded ({len(seasons)} > {max_seasons})",
-                        "seasons": sorted(seasons),
-                    }
-                )
                 continue
 
             title, year = infer_search_terms(PurePosixPath(work_path).name)
@@ -195,6 +255,7 @@ def run_detective(
             if not tmdb_id and title:
                 tmdb_id, match_score, match_reason = _find_tmdb_id(tmdb, title, year, watch.kind)
             if not tmdb_id:
+                current[work_path] = f"pending:{signature}"
                 events.append(
                     {
                         "path": work_path,
@@ -218,6 +279,7 @@ def run_detective(
                 str(resolved["primary_language"]),
                 watch.kind,
             )
+            plan, partial_batch, selected_seasons = limit_plan_for_batch(plan, max_seasons, max_operations)
             for operation in plan.operations:
                 if operation.kind == "rename_directory" and backend.exists(operation.target):
                     plan.conflicts.append(f"Target exists: {operation.target}")
@@ -229,22 +291,14 @@ def run_detective(
             write_plan(plan, str(plan_path), str(job / "plan.csv"))
 
             if plan.conflicts:
+                current[work_path] = f"pending:{signature}"
                 events.append({"path": work_path, "status": "review", "reason": "plan conflicts", "plan": str(plan_path)})
-                continue
-            if len(plan.operations) > max_operations:
-                events.append(
-                    {
-                        "path": work_path,
-                        "status": "review",
-                        "reason": f"operation limit exceeded ({len(plan.operations)} > {max_operations})",
-                        "plan": str(plan_path),
-                    }
-                )
                 continue
             if not plan.operations:
                 events.append({"path": work_path, "status": "compliant", "tmdb_id": tmdb_id})
                 continue
             if not execute:
+                current[work_path] = f"pending:{signature}"
                 events.append(
                     {
                         "path": work_path,
@@ -252,6 +306,8 @@ def run_detective(
                         "operations": len(plan.operations),
                         "plan": str(plan_path),
                         "tmdb_id": tmdb_id,
+                        "seasons": selected_seasons,
+                        "partial": partial_batch,
                     }
                 )
                 continue
@@ -269,7 +325,7 @@ def run_detective(
                 if operation.kind == "rename_directory" and operation.source == work_path:
                     final_path = operation.target
                     break
-            final_entries = backend.scan(final_path)
+            final_entries = backend.scan(final_path, refresh=True)
             verify = make_plan(
                 final_entries,
                 final_path,
@@ -283,17 +339,24 @@ def run_detective(
                 watch.kind,
             )
             write_plan(verify, str(job / "verify.json"))
-            if verify.operations or verify.conflicts:
-                events.append({"path": final_path, "status": "review", "reason": "post-apply verification failed", "plan": str(job / "verify.json")})
+            if verify.conflicts:
+                current.pop(work_path, None)
+                current[final_path] = f"pending:{fingerprint(final_entries)}"
+                events.append({"path": final_path, "status": "review", "reason": "post-apply verification conflicts", "plan": str(job / "verify.json")})
                 continue
             current.pop(work_path, None)
-            current[final_path] = fingerprint(final_entries)
+            remaining_operations = len(verify.operations)
+            current[final_path] = (
+                f"pending:{fingerprint(final_entries)}" if remaining_operations else fingerprint(final_entries)
+            )
             changed_roots.add(watch.path)
             events.append(
                 {
                     "path": final_path,
-                    "status": "applied",
+                    "status": "applied_partial" if remaining_operations else "applied",
                     "operations": len(plan.operations),
+                    "remaining_operations": remaining_operations,
+                    "seasons": selected_seasons,
                     "tmdb_id": tmdb_id,
                     "score": round(match_score, 4),
                     "reason": match_reason,

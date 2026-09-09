@@ -131,10 +131,20 @@ class OpenListBackend(StorageBackend):
         return result if isinstance(result, dict) else {}
 
     def _list(self, path: str, refresh: bool = False) -> list[dict[str, object]]:
-        data = self._request(
-            "/api/fs/list",
-            {"path": path, "password": "", "page": 1, "per_page": 0, "refresh": refresh},
-        )
+        data: dict[str, object] | None = None
+        for attempt in range(3):
+            try:
+                data = self._request(
+                    "/api/fs/list",
+                    {"path": path, "password": "", "page": 1, "per_page": 0, "refresh": refresh},
+                )
+                break
+            except BackendError as exc:
+                if not refresh or "object not found" not in str(exc).casefold() or attempt == 2:
+                    raise
+                time.sleep(float(attempt + 1))
+        if data is None:  # pragma: no cover - defensive
+            raise BackendError(f"OpenList returned no directory data for {path}")
         content = data.get("content") or []
         if not isinstance(content, list):
             raise BackendError(f"Unexpected OpenList directory response for {path}")
