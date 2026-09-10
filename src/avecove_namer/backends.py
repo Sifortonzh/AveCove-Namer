@@ -132,6 +132,7 @@ class OpenListBackend(StorageBackend):
 
     def _list(self, path: str, refresh: bool = False) -> list[dict[str, object]]:
         data: dict[str, object] | None = None
+        refresh_error: BackendError | None = None
         for attempt in range(3):
             try:
                 data = self._request(
@@ -140,9 +141,23 @@ class OpenListBackend(StorageBackend):
                 )
                 break
             except BackendError as exc:
-                if not refresh or "object not found" not in str(exc).casefold() or attempt == 2:
+                if not refresh:
                     raise
-                time.sleep(float(attempt + 1))
+                refresh_error = exc
+                if "object not found" in str(exc).casefold() and attempt < 2:
+                    time.sleep(float(attempt + 1))
+                    continue
+                break
+        if data is None and refresh:
+            try:
+                data = self._request(
+                    "/api/fs/list",
+                    {"path": path, "password": "", "page": 1, "per_page": 0, "refresh": False},
+                )
+            except BackendError:
+                if refresh_error is not None:
+                    raise refresh_error
+                raise
         if data is None:  # pragma: no cover - defensive
             raise BackendError(f"OpenList returned no directory data for {path}")
         content = data.get("content") or []
@@ -160,17 +175,21 @@ class OpenListBackend(StorageBackend):
 
     def scan(self, root: str, refresh: bool = False) -> list[Entry]:
         normalized_root = "/" + root.strip("/") if root != "/" else "/"
-        pending = [normalized_root]
+        # A provider refresh is deliberately limited to the requested work root.
+        # Refreshing every nested directory can fan out into hundreds of remote
+        # API calls and overwhelm small OpenList hosts. Child listings use the
+        # cache populated by OpenList and subsequent scheduled runs.
+        pending = [(normalized_root, refresh)]
         entries: list[Entry] = []
         while pending:
-            current = pending.pop()
-            for item in self._list(current, refresh=refresh):
+            current, refresh_current = pending.pop()
+            for item in self._list(current, refresh=refresh_current):
                 name = str(item.get("name", ""))
                 if not name:
                     continue
                 path = str(PurePosixPath(current) / name)
                 if bool(item.get("is_dir")):
-                    pending.append(path)
+                    pending.append((path, False))
                 else:
                     entries.append(
                         Entry(

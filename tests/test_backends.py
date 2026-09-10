@@ -34,6 +34,38 @@ class OpenListBackendTests(unittest.TestCase):
         self.assertEqual(backend.recorded[0], "/api/fs/list")
         self.assertTrue(backend.recorded[1]["refresh"])
 
+    def test_fresh_listing_falls_back_to_cached_data(self):
+        backend = RecordingOpenListBackend()
+        calls = []
+
+        def request(endpoint, payload):
+            calls.append((endpoint, payload))
+            if payload["refresh"]:
+                raise BackendError("OpenList API error: temporary provider failure")
+            return {"content": [{"name": "Cached", "is_dir": True}]}
+
+        with patch.object(backend, "_request", side_effect=request):
+            directories = backend.list_directories("/115/00剧/01美", refresh=True)
+
+        self.assertEqual([item["name"] for item in directories], ["Cached"])
+        self.assertEqual([payload["refresh"] for _, payload in calls], [True, False])
+
+    def test_recursive_scan_refreshes_only_the_work_root(self):
+        backend = RecordingOpenListBackend()
+        calls = []
+
+        def request(endpoint, payload):
+            calls.append((endpoint, payload))
+            if payload["path"].endswith("Show"):
+                return {"content": [{"name": "Season 01", "is_dir": True}]}
+            return {"content": [{"name": "Show.S01E01.mkv", "is_dir": False, "size": 1}]}
+
+        with patch.object(backend, "_request", side_effect=request):
+            entries = backend.scan("/115/TV/Show", refresh=True)
+
+        self.assertEqual([entry.path for entry in entries], ["/115/TV/Show/Season 01/Show.S01E01.mkv"])
+        self.assertEqual([payload["refresh"] for _, payload in calls], [True, False])
+
     def test_detective_scans_recently_modified_directories_first(self):
         backend = RecordingOpenListBackend()
         with patch.object(
