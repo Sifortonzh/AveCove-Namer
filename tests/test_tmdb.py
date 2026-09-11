@@ -48,6 +48,30 @@ class TMDBClientTests(unittest.TestCase):
         self.assertEqual(resolved["title"], "漫长的季节")
         self.assertEqual(resolved["primary_language"], "zh")
 
+    def test_original_episode_metadata_uses_original_language_for_each_season(self):
+        client = TMDBClient("0123456789abcdef0123456789abcdef")
+        client.details = lambda tmdb_id, kind, language: {
+            "original_name": "지금 불륜이 문제가 아닙니다",
+            "original_language": "ko",
+            "seasons": [{"season_number": 1}, {"season_number": 0}],
+        }
+        calls = []
+
+        def fake_get(endpoint, params):
+            calls.append((endpoint, params))
+            number = int(endpoint.rsplit("/", 1)[-1])
+            return {"episodes": [{"episode_number": 1, "name": f"제목 {number}", "overview": None}]}
+
+        client._get = fake_get
+        result = client.original_episode_metadata(301418)
+        self.assertEqual(result["original_language"], "ko")
+        self.assertEqual([item["season"] for item in result["episodes"]], [0, 1])
+        self.assertEqual(result["episodes"][0]["overview"], "")
+        self.assertEqual(calls, [
+            ("/tv/301418/season/0", {"language": "ko"}),
+            ("/tv/301418/season/1", {"language": "ko"}),
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()

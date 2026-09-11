@@ -111,3 +111,42 @@ class TMDBClient:
             "chinese_title": chinese_title,
             "original_title": original_title,
         }
+
+    def original_episode_metadata(self, tmdb_id: int) -> dict[str, object]:
+        """Return a TV series and every episode in its original language."""
+        details = self.details(tmdb_id, "tv", "en-US")
+        original_language = str(details.get("original_language") or "").strip()
+        if not original_language:
+            raise TMDBError("TV series has no original_language")
+
+        episodes: list[dict[str, object]] = []
+        seasons = sorted(
+            (item for item in details.get("seasons", []) if isinstance(item, dict)),
+            key=lambda item: int(item.get("season_number") or 0),
+        )
+        for season in seasons:
+            season_number = int(season.get("season_number") or 0)
+            payload = self._get(
+                f"/tv/{tmdb_id}/season/{season_number}",
+                {"language": original_language},
+            )
+            season_episodes = sorted(
+                (item for item in payload.get("episodes", []) if isinstance(item, dict)),
+                key=lambda item: int(item.get("episode_number") or 0),
+            )
+            for episode in season_episodes:
+                episodes.append(
+                    {
+                        "season": season_number,
+                        "episode": int(episode.get("episode_number") or 0),
+                        "name": str(episode.get("name") or ""),
+                        "overview": str(episode.get("overview") or ""),
+                    }
+                )
+
+        return {
+            "tmdb_id": tmdb_id,
+            "original_language": original_language,
+            "original_name": str(details.get("original_name") or ""),
+            "episodes": episodes,
+        }

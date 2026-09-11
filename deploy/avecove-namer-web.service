@@ -1,0 +1,21 @@
+[Unit]
+Description=AveCove Media Tools private web application
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/opt/docker/avecove-namer/web.env
+ExecStart=/usr/local/bin/avecove-namer-web --host 127.0.0.1 --port 8787
+Restart=on-failure
+RestartSec=5
+User=root
+Nice=10
+CPUQuota=35%
+MemoryMax=192M
+PrivateTmp=true
+ProtectHome=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

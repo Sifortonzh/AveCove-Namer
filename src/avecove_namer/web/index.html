@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090b10">
+  <meta name="description" content="AveCove 私人媒体工具箱">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23090b10'/%3E%3Cpath d='M18 45 31 16l15 29h-8l-3-7H24l-3 7h-3Zm9-14h5l-2.4-6-2.6 6Z' fill='%23e44b5f'/%3E%3C/svg%3E">
+  <title>AveCove Media Tools</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#tmdb" aria-label="AveCove Media Tools 首页">
+        <span class="brand-mark">A</span>
+        <span><strong>AveCove</strong><small>Media Tools</small></span>
+      </a>
+      <nav aria-label="工具导航">
+        <button class="nav-item active" data-view="tmdb"><span>⌕</span>TMDb 查询</button>
+        <button class="nav-item" data-view="namer"><span>✦</span>Namer</button>
+        <button class="nav-item" data-view="detective"><span>◉</span>识别记录</button>
+        <button class="nav-item" data-view="emby"><span>↻</span>Emby 刷新</button>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="status-dot"></span>
+        <span id="service-status">正在连接服务</span>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <button class="mobile-menu" id="mobile-menu" aria-label="打开导航">☰</button>
+        <div><span class="eyebrow">PRIVATE WORKSPACE</span><h1 id="page-title">TMDb 查询</h1></div>
+        <span class="date" id="today"></span>
+      </header>
+
+      <section class="view active" id="view-tmdb">
+        <div class="section-head">
+          <div><h2>源语言元数据</h2><p>按 TMDb 原始语言读取剧集和全部单集标题、简介。</p></div>
+          <div class="segmented" role="group" aria-label="媒体类型">
+            <button class="active" data-kind="tv">剧集</button><button data-kind="movie">电影</button>
+          </div>
+        </div>
+        <form class="command-bar" id="tmdb-form">
+          <label class="grow"><span>剧名、电影名或 TMDb ID</span><input id="tmdb-query" autocomplete="off" placeholder="例如：现在不是出轨的问题 / 301418" required></label>
+          <label class="year-field"><span>年份（可选）</span><input id="tmdb-year" inputmode="numeric" placeholder="2026"></label>
+          <button class="primary" type="submit">查询</button>
+        </form>
+        <div class="notice">输入剧集 ID 会直接读取源语言单集信息；输入名称会先列出匹配结果。</div>
+        <div id="tmdb-result" class="result-space empty-state"><span class="empty-icon">⌕</span><p>输入名称或 ID 开始查询</p></div>
+      </section>
+
+      <section class="view" id="view-namer">
+        <div class="section-head"><div><h2>Namer 改名</h2><p>先生成只读预览，确认无冲突后再执行。</p></div><span class="safe-badge">默认只读</span></div>
+        <form class="form-card" id="namer-form">
+          <label class="wide"><span>OpenList 媒体路径</span><input id="namer-path" placeholder="/115/00剧/01美/Modern Family" required></label>
+          <label><span>TMDb ID</span><input id="namer-id" inputmode="numeric" placeholder="1421" required></label>
+          <label><span>类型</span><select id="namer-kind"><option value="tv">剧集</option><option value="movie">电影</option></select></label>
+          <label><span>标题方式</span><select id="namer-style"><option value="auto">自动</option><option value="original">原名</option><option value="english">英文</option><option value="chinese">中文</option><option value="bilingual">双语</option></select></label>
+          <button class="primary align-end" type="submit">生成预览</button>
+        </form>
+        <div id="namer-result" class="result-space empty-state"><span class="empty-icon">✦</span><p>输入路径和 TMDb ID 生成改名预览</p></div>
+      </section>
+
+      <section class="view" id="view-detective">
+        <div class="section-head"><div><h2>识别记录</h2><p>Namer 最近一次自动检测的结果与待审核项目。</p></div><button class="secondary" id="reload-detective">刷新记录</button></div>
+        <div id="detective-summary" class="stats"></div>
+        <div id="detective-result" class="result-space empty-state"><span class="empty-icon">◉</span><p>正在读取记录</p></div>
+      </section>
+
+      <section class="view" id="view-emby">
+        <div class="section-head"><div><h2>Emby 定向刷新</h2><p>只同步指定云盘路径，并刷新对应的 Emby 媒体库。</p></div></div>
+        <form class="command-bar" id="emby-form">
+          <label class="grow"><span>OpenList 媒体路径</span><input id="emby-path" placeholder="/GuangYa/00剧/01美/Game of Thrones (2011)" required></label>
+          <button class="primary" type="submit">开始刷新</button>
+        </form>
+        <div class="notice">刷新在服务器后台低负载运行；页面可以关闭，不会中断任务。</div>
+        <div id="emby-result" class="result-space empty-state"><span class="empty-icon">↻</span><p>输入一个具体的作品或分类路径</p></div>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

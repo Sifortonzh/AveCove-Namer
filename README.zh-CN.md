@@ -4,7 +4,7 @@
 
 [English](README.md)
 
-> 当前版本：v0.4.0 alpha。请先选择一个小目录试运行，并在执行前逐条审核计划。
+> 当前版本：v0.5.0 alpha。请先选择一个小目录试运行，并在执行前逐条审核计划。
 
 ## Detective 自动侦测
 
@@ -43,6 +43,24 @@ Modern.Family.2009.S01E01.1080p.BluRay.x265.DTS.zh-CN.sup
 - 检查源文件是否失效，并逐项写入可回滚日志。
 - 提供只读 TMDB 搜索，辅助核对片名和年份。
 - 无数据库、无后台定时器、无常驻服务，适合小内存服务器。
+
+## 私人网站
+
+`avecove-namer-web` 提供一套手机和桌面都可用的私人媒体工具箱：
+
+- 搜索 TMDb 电影与剧集。
+- 按剧集的 `original_language` 读取全部源语言单集标题和简介，并复制或下载 JSON。
+- 为 OpenList 路径生成 Namer 只读改名预览，逐条展示修改与冲突。
+- 输入精确操作数量确认后执行改名，保留回滚日志并启动定向 Emby 刷新。
+- 查看 Detective 最近一次识别结果，也可单独刷新指定 Emby 路径。
+
+网站默认只监听 `127.0.0.1:8787`，应通过带身份验证和 HTTPS 的反向代理访问：
+
+```bash
+avecove-namer-web --host 127.0.0.1 --port 8787
+```
+
+服务器部署示例见 `deploy/avecove-namer-web.service` 和 `deploy/my.avecrouge.com.nginx`。API 凭据继续从服务器上的 `0600` 文件读取，不会发给浏览器。
 
 TMDB 搜索同时支持 API 读取访问令牌和 v3 API Key，两者都必须保存在 `0600` 权限的凭据文件中。
 

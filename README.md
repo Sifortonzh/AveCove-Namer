@@ -4,7 +4,7 @@ Safe, reviewable media naming for OpenList, Emby, Infuse, and SenPlayer.
 
 [简体中文](README.zh-CN.md)
 
-> Status: v0.4.0 alpha. Start with a small canary folder and review every plan before execution.
+> Status: v0.5.0 alpha. Start with a small canary folder and review every plan before execution.
 
 ## Detective automation
 
@@ -47,6 +47,16 @@ The series year is included, episode titles are omitted, and useful release meta
 - No database, background scheduler, or resident service.
 
 TMDB search accepts either an API Read Access Token or a v3 API Key stored in a `0600` credential file.
+
+## Private web interface
+
+`avecove-namer-web` serves a responsive private media toolbox with TMDB search, original-language episode metadata, reviewable Namer plans, Detective results, and targeted Emby refreshes. Rename execution still requires an exact operation-count confirmation, keeps a rollback journal, and starts the existing low-load Emby refresh workflow. Credentials stay in protected server-side files and are never returned to the browser.
+
+```bash
+avecove-namer-web --host 127.0.0.1 --port 8787
+```
+
+Deploy it behind authenticated HTTPS. Example systemd and Nginx configurations are included in `deploy/`.
 
 ## Quick start
 
