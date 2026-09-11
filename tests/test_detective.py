@@ -1,6 +1,16 @@
 import unittest
 
-from avecove_namer.detective import choose_tmdb_match, infer_search_terms, limit_plan_for_batch, parse_watch, season_numbers
+from avecove_namer.detective import (
+    choose_tmdb_match,
+    discover_movie_works,
+    infer_search_terms,
+    limit_plan_for_batch,
+    movie_search_candidates,
+    movie_title_variants,
+    movie_work_root,
+    parse_watch,
+    season_numbers,
+)
 from avecove_namer.models import Entry, RenameOperation, RenamePlan
 
 
@@ -51,6 +61,18 @@ class DetectiveTests(unittest.TestCase):
         self.assertIsNone(match)
         self.assertEqual(score, 0.0)
 
+    def test_localized_duplicates_keep_best_title_for_same_tmdb_id(self):
+        match, score, _ = choose_tmdb_match(
+            "Chinese Zodiac",
+            2012,
+            [
+                {"id": 98567, "title": "十二生肖", "original_title": "十二生肖", "year": 2012},
+                {"id": 98567, "title": "Chinese Zodiac", "original_title": "十二生肖", "year": 2012},
+            ],
+        )
+        self.assertEqual(match["id"], 98567)
+        self.assertEqual(score, 1.0)
+
     def test_season_numbers_support_episode_and_disc_layouts(self):
         entries = [
             Entry("/TV/Show/Season 01/Show.S01E01.mkv"),
@@ -87,6 +109,47 @@ class DetectiveTests(unittest.TestCase):
         self.assertEqual(seasons, [1, 2, 3, 4, 5])
         self.assertTrue(partial)
         self.assertEqual(len(batch.operations), 6)
+
+    def test_movie_collection_is_split_at_nested_release_folders(self):
+        top = "/Movies/Fast Saga Collection"
+        entries = [
+            Entry(f"{top}/Fast 1/The.Fast.and.the.Furious.2001.2160p.REMUX.mkv"),
+            Entry(f"{top}/Fast 2/2.Fast.2.Furious.2003.2160p.REMUX.mkv"),
+        ]
+        works = discover_movie_works("/Movies", top, entries)
+        self.assertEqual([root for root, _ in works], [f"{top}/Fast 1", f"{top}/Fast 2"])
+
+    def test_existing_nested_tmdb_folder_is_the_movie_root(self):
+        path = "/Movies/Actor/Bluray/功夫（2004） {tmdb=9470}/功夫.2004.mkv"
+        root = movie_work_root("/Movies", "/Movies/Actor", path)
+        self.assertEqual(root, "/Movies/Actor/Bluray/功夫（2004） {tmdb=9470}")
+
+    def test_bluray_stream_uses_folder_above_bdmv(self):
+        path = "/Movies/Collection/Movie Release/BDMV/STREAM/00001.m2ts"
+        root = movie_work_root("/Movies", "/Movies/Collection", path)
+        self.assertEqual(root, "/Movies/Collection/Movie Release")
+
+    def test_movie_filename_is_preferred_when_folder_is_noisy_and_has_no_year(self):
+        root = "/Movies/速度与激情1 4K原盘REMUX 国英双音"
+        candidates = movie_search_candidates(
+            "速度与激情1 4K原盘REMUX 国英双音",
+            [Entry(f"{root}/The.Fast.and.the.Furious.2001.2160p.REMUX.mkv")],
+        )
+        self.assertEqual(candidates[0], ("The Fast and the Furious", 2001))
+
+    def test_bilingual_release_title_produces_english_and_chinese_variants(self):
+        variants = movie_title_variants("十二生肖[60帧率版本][国语配音+中文字幕] Chinese Zodiac")
+        self.assertEqual(variants, ["十二生肖 Chinese Zodiac", "Chinese Zodiac", "十二生肖"])
+
+    def test_movie_title_variant_strips_year_parenthesis_fragment(self):
+        self.assertEqual(movie_title_variants("猛鬼学堂 ("), ["猛鬼学堂"])
+
+    def test_movie_release_folder_strips_technical_tail_for_search(self):
+        candidates = movie_search_candidates(
+            "速度与激情9 4K原盘REMUX 国英双音 杜比视界 特效字幕",
+            [Entry("/Movies/F9.The.Fast.Saga.2021.2160p.REMUX.mkv")],
+        )
+        self.assertIn(("速度与激情9", None), candidates)
 
 
 if __name__ == "__main__":

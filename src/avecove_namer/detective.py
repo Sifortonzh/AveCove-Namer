@@ -13,7 +13,7 @@ from typing import Iterable
 
 from .backends import BackendError, OpenListBackend
 from .executor import execute_plan
-from .naming import NamingPolicy
+from .naming import NamingPolicy, VIDEO_EXTENSIONS, extension_of, parse_media_name
 from .models import Entry, RenamePlan
 from .planner import make_plan, write_plan
 from .tmdb import TMDBClient
@@ -25,6 +25,23 @@ SEASON_PACK_RE = re.compile(r"(?i)\s*全\s*\d{1,2}\s*季.*$")
 SEASON_RE = re.compile(r"(?i)(?:season[ ._-]*|(?<![a-z0-9])s)0*(\d{1,2})(?=(?:e\d|d\d|[^0-9]|$))")
 CHINESE_SEASON_RE = re.compile(r"第[ ._-]*(\d{1,2}|[〇零一二两三四五六七八九十百]+)[ ._-]*季")
 CHINESE_DIGITS = {"〇": 0, "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+GENERIC_MOVIE_FOLDERS = {
+    "bdmv",
+    "stream",
+    "video_ts",
+    "certificate",
+    "backup",
+    "disc",
+    "disk",
+    "cd1",
+    "cd2",
+    "正片",
+    "原盘",
+    "视频",
+}
+MOVIE_RELEASE_MARKER_RE = re.compile(
+    r"(?i)(?:^|[ ._\-])(?:2160p|1080p|720p|4k|uhd|蓝光|原盘|remux|web[ ._-]*dl|webrip|hdr|杜比视界)"
+)
 
 
 @dataclass(frozen=True)
@@ -70,13 +87,11 @@ def choose_tmdb_match(
     minimum_score: float = 0.88,
 ) -> tuple[dict[str, object] | None, float, str]:
     query_key = normalized_title(query)
-    ranked: list[tuple[float, dict[str, object]]] = []
-    seen: set[int] = set()
+    ranked_by_id: dict[int, tuple[float, dict[str, object]]] = {}
     for result in results:
         result_id = int(result.get("id") or 0)
-        if not result_id or result_id in seen:
+        if not result_id:
             continue
-        seen.add(result_id)
         result_year = result.get("year")
         if year and result_year and int(result_year) != year:
             continue
@@ -85,7 +100,10 @@ def choose_tmdb_match(
             (SequenceMatcher(None, query_key, normalized_title(candidate)).ratio() for candidate in candidates if candidate),
             default=0.0,
         )
-        ranked.append((score, result))
+        previous = ranked_by_id.get(result_id)
+        if previous is None or score > previous[0]:
+            ranked_by_id[result_id] = (score, result)
+    ranked = list(ranked_by_id.values())
     ranked.sort(key=lambda item: item[0], reverse=True)
     if not ranked:
         return None, 0.0, "no year-compatible TMDB result"
@@ -206,6 +224,143 @@ def _find_tmdb_id(client: TMDBClient, title: str, year: int | None, kind: str) -
     return (int(match["id"]) if match else None), score, reason
 
 
+def _is_below(path: str, root: str) -> bool:
+    candidate = PurePosixPath(path)
+    parent = PurePosixPath(root)
+    try:
+        candidate.relative_to(parent)
+    except ValueError:
+        return False
+    return True
+
+
+def movie_work_root(watch_path: str, top_path: str, media_path: str) -> str:
+    """Return the directory that represents one movie inside a release/collection tree."""
+    watch = PurePosixPath(watch_path)
+    top = PurePosixPath(top_path)
+    parent = PurePosixPath(media_path).parent
+    try:
+        parent.relative_to(top)
+    except ValueError:
+        return str(top)
+
+    ancestors: list[PurePosixPath] = []
+    current = parent
+    while current != watch and _is_below(str(current), str(top)):
+        ancestors.append(current)
+        if current == top:
+            break
+        current = current.parent
+
+    # A previously normalized nested movie directory is always authoritative.
+    tagged = [path for path in ancestors if _tmdb_id_from_name(path.name) is not None]
+    if tagged:
+        return str(tagged[0])
+
+    # For disc structures, BDMV/VIDEO_TS belongs to the movie folder above it.
+    parts = list(parent.parts)
+    lowered = [part.casefold() for part in parts]
+    for marker in ("bdmv", "video_ts"):
+        if marker in lowered:
+            index = lowered.index(marker)
+            if index > len(top.parts):
+                return str(PurePosixPath(*parts[:index]))
+
+    # Release folders commonly carry the year even when the media filename is deeper.
+    dated = [path for path in ancestors if YEAR_RE.search(path.name)]
+    if dated:
+        return str(dated[0])
+
+    candidate = parent
+    while candidate != top and candidate.name.casefold() in GENERIC_MOVIE_FOLDERS:
+        candidate = candidate.parent
+    return str(candidate)
+
+
+def discover_movie_works(watch_path: str, top_path: str, entries: list[Entry]) -> list[tuple[str, list[Entry]]]:
+    """Split a publisher collection into independently nameable movie roots."""
+    media_entries = [entry for entry in entries if extension_of(entry.name) in VIDEO_EXTENSIONS]
+    roots = sorted(
+        {movie_work_root(watch_path, top_path, entry.path) for entry in media_entries},
+        key=lambda value: (len(PurePosixPath(value).parts), value.casefold()),
+    )
+    return [
+        (root, [entry for entry in entries if _is_below(entry.path, root)])
+        for root in roots
+    ]
+
+
+def movie_title_variants(value: str) -> list[str]:
+    """Produce conservative searchable titles from bilingual/noisy release names."""
+    normalized = unicodedata.normalize("NFKC", value)
+    without_tags = re.sub(r"\[[^\]]{1,80}\]|【[^】]{1,80}】", " ", normalized)
+    without_tags = re.sub(r"\s+", " ", without_tags).strip(" ()[]【】._-")
+    variants = [without_tags] if without_tags else []
+    if re.search(r"[\u3400-\u9fff]", without_tags) and re.search(r"[A-Za-z]", without_tags):
+        english = " ".join(re.findall(r"[A-Za-z][A-Za-z0-9]*(?:['&-][A-Za-z0-9]+)*", without_tags))
+        chinese = "".join(re.findall(r"[\u3400-\u9fff]+", without_tags))
+        variants.extend(value for value in (english, chinese) if value)
+    return list(dict.fromkeys(variants))
+
+
+def movie_search_candidates(folder_name: str, entries: list[Entry]) -> list[tuple[str, int | None]]:
+    """Prefer a movie file's title/year when release folders contain noisy labels."""
+    folder_candidate = infer_search_terms(folder_name)
+    parsed_folder = parse_media_name(folder_name + ".mkv")
+    folder_candidates = [folder_candidate]
+    release_marker = MOVIE_RELEASE_MARKER_RE.search(unicodedata.normalize("NFKC", folder_name))
+    if release_marker:
+        release_title = folder_name[: release_marker.start()].strip(" ()[]【】._-")
+        if release_title:
+            folder_candidates.append((release_title, folder_candidate[1]))
+    if parsed_folder.title:
+        folder_candidates.extend(
+            (title, parsed_folder.year or folder_candidate[1])
+            for title in movie_title_variants(parsed_folder.title)
+        )
+    file_candidates: list[tuple[str, int | None]] = []
+    for entry in entries:
+        if extension_of(entry.name) not in VIDEO_EXTENSIONS:
+            continue
+        parsed = parse_media_name(entry.name)
+        if parsed.kind == "movie" and parsed.title:
+            file_candidates.extend((title, parsed.year) for title in movie_title_variants(parsed.title))
+
+    ordered = file_candidates + folder_candidates if not folder_candidate[1] else folder_candidates + file_candidates
+    unique: list[tuple[str, int | None]] = []
+    seen: set[tuple[str, int | None]] = set()
+    for title, year in ordered:
+        if not title:
+            continue
+        key = (normalized_title(title), year)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((title, year))
+    return unique
+
+
+def _find_movie_tmdb_id(
+    client: TMDBClient,
+    folder_name: str,
+    entries: list[Entry],
+) -> tuple[int | None, float, str, str | None, int | None]:
+    best_score = 0.0
+    best_reason = "could not infer title and year"
+    candidates = movie_search_candidates(folder_name, entries)
+    for title, year in candidates:
+        tmdb_id, score, reason = _find_tmdb_id(client, title, year, "movie")
+        if tmdb_id:
+            return tmdb_id, score, reason, title, year
+        if score > best_score:
+            best_score, best_reason = score, reason
+    if candidates:
+        title, year = candidates[0]
+    else:
+        title, year = None, None
+    return None, best_score, best_reason, title, year
+
+
 def run_detective(
     backend: OpenListBackend,
     tmdb: TMDBClient,
@@ -232,13 +387,74 @@ def run_detective(
             events.append({"path": watch.path, "status": "scan_error", "reason": str(exc)})
             continue
         for directory in directories:
-            work_path = str(PurePosixPath(watch.path) / str(directory["name"]))
+            top_path = str(PurePosixPath(watch.path) / str(directory["name"]))
             try:
-                entries = backend.scan(work_path, refresh=True)
+                top_entries = backend.scan(top_path, refresh=True)
             except BackendError as exc:
-                current[work_path] = f"pending:{previous.get(work_path, '')}"
-                events.append({"path": work_path, "status": "scan_error", "reason": str(exc)})
+                current[top_path] = f"pending:{previous.get(top_path, '')}"
+                events.append({"path": top_path, "status": "scan_error", "reason": str(exc)})
                 continue
+            work_items = (
+                discover_movie_works(watch.path, top_path, top_entries)
+                if watch.kind == "movie"
+                else [(top_path, top_entries)]
+            )
+            if not work_items:
+                events.append({"path": top_path, "status": "no_media"})
+                continue
+            for work_path, entries in work_items:
+                _process_detective_work(
+                    backend,
+                    tmdb,
+                    watch,
+                    work_path,
+                    entries,
+                    previous,
+                    current,
+                    events,
+                    changed_roots,
+                    state_path,
+                    work_root,
+                    run_stamp,
+                    execute,
+                    bootstrap,
+                    max_operations,
+                    max_seasons,
+                    title_style,
+                )
+
+    state["works"] = current
+    state["updated_at"] = utc_now()
+    write_json_atomic(state_path, state)
+    return {
+        "version": 1,
+        "created_at": utc_now(),
+        "bootstrap": bootstrap,
+        "execute": execute,
+        "changed_roots": sorted(changed_roots),
+        "events": events,
+    }
+
+
+def _process_detective_work(
+    backend: OpenListBackend,
+    tmdb: TMDBClient,
+    watch: WatchRoot,
+    work_path: str,
+    entries: list[Entry],
+    previous: dict[str, object],
+    current: dict[str, str],
+    events: list[dict[str, object]],
+    changed_roots: set[str],
+    state_path: Path,
+    work_root: Path,
+    run_stamp: str,
+    execute: bool,
+    bootstrap: bool,
+    max_operations: int,
+    max_seasons: int,
+    title_style: str,
+) -> None:
             signature = fingerprint(entries)
             current[work_path] = signature
             previous_signature = str(previous.get(work_path) or "")
@@ -246,13 +462,19 @@ def run_detective(
             changed = previous_signature != signature or previous_signature.startswith("pending:") or not canonical_folder
             if bootstrap or not changed:
                 events.append({"path": work_path, "status": "baseline" if bootstrap else "unchanged"})
-                continue
+                return
 
             title, year = infer_search_terms(PurePosixPath(work_path).name)
             tmdb_id = _tmdb_id_from_name(PurePosixPath(work_path).name)
             match_score = 1.0 if tmdb_id else 0.0
             match_reason = "existing TMDB folder tag" if tmdb_id else ""
-            if not tmdb_id and title:
+            if not tmdb_id and watch.kind == "movie":
+                tmdb_id, match_score, match_reason, title, year = _find_movie_tmdb_id(
+                    tmdb,
+                    PurePosixPath(work_path).name,
+                    entries,
+                )
+            elif not tmdb_id and title:
                 tmdb_id, match_score, match_reason = _find_tmdb_id(tmdb, title, year, watch.kind)
             if not tmdb_id:
                 current[work_path] = f"pending:{signature}"
@@ -264,7 +486,7 @@ def run_detective(
                         "score": round(match_score, 4),
                     }
                 )
-                continue
+                return
 
             resolved = tmdb.resolve_title(tmdb_id, watch.kind, title_style)
             plan = make_plan(
@@ -293,10 +515,10 @@ def run_detective(
             if plan.conflicts:
                 current[work_path] = f"pending:{signature}"
                 events.append({"path": work_path, "status": "review", "reason": "plan conflicts", "plan": str(plan_path)})
-                continue
+                return
             if not plan.operations:
                 events.append({"path": work_path, "status": "compliant", "tmdb_id": tmdb_id})
-                continue
+                return
             if not execute:
                 current[work_path] = f"pending:{signature}"
                 events.append(
@@ -310,7 +532,7 @@ def run_detective(
                         "partial": partial_batch,
                     }
                 )
-                continue
+                return
 
             execute_plan(
                 plan,
@@ -343,7 +565,7 @@ def run_detective(
                 current.pop(work_path, None)
                 current[final_path] = f"pending:{fingerprint(final_entries)}"
                 events.append({"path": final_path, "status": "review", "reason": "post-apply verification conflicts", "plan": str(job / "verify.json")})
-                continue
+                return
             current.pop(work_path, None)
             remaining_operations = len(verify.operations)
             current[final_path] = (
@@ -363,15 +585,3 @@ def run_detective(
                     "journal": str(journal_path),
                 }
             )
-
-    state["works"] = current
-    state["updated_at"] = utc_now()
-    write_json_atomic(state_path, state)
-    return {
-        "version": 1,
-        "created_at": utc_now(),
-        "bootstrap": bootstrap,
-        "execute": execute,
-        "changed_roots": sorted(changed_roots),
-        "events": events,
-    }
