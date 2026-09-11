@@ -100,6 +100,13 @@ class NamingTests(unittest.TestCase):
             "The.Godfather.1972.2160p.UHD.BluRay.REMUX.DV.HDR.mkv",
         )
 
+    def test_movie_dvd_format_data_is_preserved(self):
+        parsed = parse_media_name("猛鬼学堂 (1988) NTSC DVD5.iso")
+        self.assertEqual(
+            build_video_name(parsed, NamingPolicy(), "猛鬼学堂", 1988),
+            "猛鬼学堂.1988.NTSC.DVD5.iso",
+        )
+
     def test_english_title_can_lead_a_foreign_movie(self):
         parsed = parse_media_name("Source.2003.2160p.REMUX.DV.mkv")
         self.assertEqual(
