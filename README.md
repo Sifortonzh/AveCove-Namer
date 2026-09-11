@@ -4,13 +4,13 @@ Safe, reviewable media naming for OpenList, Emby, Infuse, and SenPlayer.
 
 [简体中文](README.zh-CN.md)
 
-> Status: v0.3.0 alpha. Start with a small canary folder and review every plan before execution.
+> Status: v0.4.0 alpha. Start with a small canary folder and review every plan before execution.
 
 ## Detective automation
 
 OpenList rename pacing can be configured per storage with a JSON file at `/opt/docker/avecove-namer/rate-limits.json` (override with `AVECOVE_NAMER_RATE_PROFILE`). Keys are `/123`, `/Baidu`, `/Quark`, and `/GuangYa`; values are additional seconds between completed rename requests. Zero keeps requests sequential without an artificial delay. Unconfigured storage, including `/115`, retains the default three seconds. Provider errors restore a minimum three-second delay for that storage in the current process and trigger exponential retry backoff. Short directory probes do not establish a provider's long-term file-operation limit.
 
-`avecove-namer detect` fingerprints the direct work folders under one or more watched OpenList roots. On a later run it plans only new or changed works. Existing `{tmdb=...}` tags are trusted; untagged works are applied only when title, year, and TMDB produce a unique high-confidence match. Ambiguous matches and conflicting plans are kept for review instead of being renamed.
+`avecove-namer detect` fingerprints works under one or more watched OpenList roots. Movie collections are traversed and split into individual movie roots while the outer publisher/collection folders remain intact. Movie identity can be recovered from the media filename when a release folder is noisy, bilingual, or generic; BDMV and VIDEO_TS layouts resolve to the movie folder above the disc structure. Existing `{tmdb=...}` tags are trusted, and untagged works are applied only when title, year, and TMDB produce a unique high-confidence match. Ambiguous matches and conflicting plans are kept for review instead of being renamed.
 
 The included low-load server wrapper watches the four GuangYa TV roots, keeps state and rollback journals, and refreshes only changed STRM prefixes. It runs daily at 00:00, 02:00, 06:00, 10:00, 14:00, 18:00, and 23:00 in Asia/Shanghai, with CPU, memory, I/O, and lock limits. Missed runs are not replayed after downtime. Bootstrap the current library once before enabling its timer:
 
@@ -28,10 +28,12 @@ Modern.Family.2009.S01E01.1080p.BluRay.x265.DTS.zh-CN.sup
 
 The series year is included, episode titles are omitted, and useful release metadata is retained.
 
-## What v0.2 includes
+## What v0.4 includes
 
 - Local filesystem and OpenList backends.
 - Year-aware TV and movie naming.
+- Per-movie detection inside nested publisher, actor, franchise, and disc-image collections.
+- Filename fallback for noisy or bilingual movie release folders.
 - Origin-aware movie and series folder naming with Emby TMDB ID tags.
 - Automatic selected-work-folder naming whenever a verified TMDB ID is supplied.
 - Recursive media naming without renaming or moving existing season folders such as `Season 01`, `Season01`, `S01`, or `第一季`.
