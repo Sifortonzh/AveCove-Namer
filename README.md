@@ -4,7 +4,7 @@ Safe, reviewable media naming for OpenList, Emby, Infuse, and SenPlayer.
 
 [简体中文](README.zh-CN.md)
 
-> Status: v0.5.0 alpha. Start with a small canary folder and review every plan before execution.
+> Status: v0.5.1 alpha. Start with a small canary folder and review every plan before execution.
 
 ## Detective automation
 

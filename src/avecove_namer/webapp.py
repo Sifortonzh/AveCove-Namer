@@ -256,6 +256,14 @@ class App:
 def handler_factory(app: App):
     static_root = Path(__file__).with_name("web")
 
+    def routed_path(raw_path: str) -> str:
+        path = urlparse(raw_path).path
+        if path == "/media-tools":
+            return "/"
+        if path.startswith("/media-tools/"):
+            return path[len("/media-tools"):]
+        return path
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "AveCoveMedia/1"
 
@@ -291,21 +299,21 @@ def handler_factory(app: App):
             self.json_response(status, {"error": str(exc)})
 
         def do_GET(self) -> None:
-            parsed = urlparse(self.path)
+            path = routed_path(self.path)
             try:
-                if parsed.path == "/api/health":
+                if path == "/api/health":
                     self.json_response(HTTPStatus.OK, {"status": "ok", "service": "AveCove Media Tools"})
                     return
-                if parsed.path == "/api/detective":
+                if path == "/api/detective":
                     self.json_response(HTTPStatus.OK, app.detective())
                     return
-                if parsed.path.startswith("/api/jobs/"):
-                    self.json_response(HTTPStatus.OK, app.job(parsed.path.rsplit("/", 1)[-1]))
+                if path.startswith("/api/jobs/"):
+                    self.json_response(HTTPStatus.OK, app.job(path.rsplit("/", 1)[-1]))
                     return
-                if parsed.path.startswith("/api/"):
+                if path.startswith("/api/"):
                     self.json_response(HTTPStatus.NOT_FOUND, {"error": "接口不存在"})
                     return
-                relative = "index.html" if parsed.path in {"", "/"} else parsed.path.lstrip("/")
+                relative = "index.html" if path in {"", "/"} else path.lstrip("/")
                 target = (static_root / relative).resolve()
                 if static_root.resolve() not in target.parents or not target.is_file():
                     target = static_root / "index.html"
@@ -331,7 +339,7 @@ def handler_factory(app: App):
                     "/api/namer/apply": app.apply_plan,
                     "/api/emby/refresh": lambda payload: {"job_id": app.start_refresh(payload.get("path"))},
                 }
-                action = routes.get(urlparse(self.path).path)
+                action = routes.get(routed_path(self.path))
                 if not action:
                     self.json_response(HTTPStatus.NOT_FOUND, {"error": "接口不存在"})
                     return

@@ -3,6 +3,7 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 const titles = { tmdb: 'TMDb 查询', namer: 'Namer', detective: '识别记录', emby: 'Emby 刷新' };
 let mediaKind = 'tv';
 let lastSourceData = null;
+const basePath = location.pathname.startsWith('/media-tools') ? '/media-tools' : '';
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -18,7 +19,7 @@ function toast(message, error = false) {
 
 async function api(path, payload) {
   const options = payload ? { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) } : {};
-  const response = await fetch(path, options);
+  const response = await fetch(`${basePath}${path}`, options);
   let data;
   try { data = await response.json(); } catch { data = {error: `服务返回 ${response.status}`}; }
   if (!response.ok) throw new Error(data.error || `请求失败 (${response.status})`);
