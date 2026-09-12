@@ -4,7 +4,7 @@ Safe, reviewable media naming for OpenList, Emby, Infuse, and SenPlayer.
 
 [简体中文](README.zh-CN.md)
 
-> Status: v0.5.1 alpha. Start with a small canary folder and review every plan before execution.
+> Status: v0.5.2 alpha. Start with a small canary folder and review every plan before execution.
 
 ## Detective automation
 
@@ -34,6 +34,7 @@ The series year is included, episode titles are omitted, and useful release meta
 - Year-aware TV and movie naming.
 - Per-movie detection inside nested publisher, actor, franchise, and disc-image collections.
 - Filename fallback for noisy or bilingual movie release folders.
+- Episode-filename fallback for TV folders with bracketed titles, missing years, or publisher release labels.
 - Origin-aware movie and series folder naming with Emby TMDB ID tags.
 - Automatic selected-work-folder naming whenever a verified TMDB ID is supplied.
 - Recursive media naming without renaming or moving existing season folders such as `Season 01`, `Season01`, `S01`, or `第一季`.

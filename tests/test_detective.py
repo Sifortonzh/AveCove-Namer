@@ -9,7 +9,9 @@ from avecove_namer.detective import (
     movie_title_variants,
     movie_work_root,
     parse_watch,
+    release_folder_title,
     season_numbers,
+    tv_search_candidates,
 )
 from avecove_namer.models import Entry, RenameOperation, RenamePlan
 
@@ -150,6 +152,27 @@ class DetectiveTests(unittest.TestCase):
             [Entry("/Movies/F9.The.Fast.Saga.2021.2160p.REMUX.mkv")],
         )
         self.assertIn(("速度与激情9", None), candidates)
+
+    def test_tv_release_folder_strips_publisher_technical_tail(self):
+        self.assertEqual(
+            release_folder_title("谋杀 蓝光原盘remux 内封精修简英双语字幕 年糕封装"),
+            "谋杀",
+        )
+
+    def test_bracketed_tv_title_is_extracted_before_release_text(self):
+        self.assertEqual(
+            release_folder_title("【艾米丽在巴黎】全5季收藏4K.HDR&杜比视界"),
+            "艾米丽在巴黎",
+        )
+
+    def test_tv_title_falls_back_to_episode_filename(self):
+        root = "/TV/【艾米丽在巴黎】全5季收藏4K.HDR"
+        candidates = tv_search_candidates(
+            "【艾米丽在巴黎】全5季收藏4K.HDR",
+            [Entry(f"{root}/第一季/Emily.in.Paris.S01E01.2160p.WEB-DL.mkv")],
+        )
+        self.assertIn(("艾米丽在巴黎", None), candidates)
+        self.assertIn(("Emily in Paris", None), candidates)
 
 
 if __name__ == "__main__":

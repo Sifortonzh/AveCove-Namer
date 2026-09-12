@@ -303,16 +303,28 @@ def movie_title_variants(value: str) -> list[str]:
     return list(dict.fromkeys(variants))
 
 
+def release_folder_title(folder_name: str) -> str | None:
+    normalized = unicodedata.normalize("NFKC", folder_name)
+    bracketed = re.match(r"^\s*[【\[](?P<title>[^】\]]+)[】\]]", normalized)
+    if bracketed:
+        value = bracketed.group("title").strip(" ()[]【】._-")
+        if value:
+            return value
+    marker = MOVIE_RELEASE_MARKER_RE.search(normalized)
+    if not marker:
+        return None
+    value = normalized[: marker.start()].strip(" ()[]【】._-")
+    return value or None
+
+
 def movie_search_candidates(folder_name: str, entries: list[Entry]) -> list[tuple[str, int | None]]:
     """Prefer a movie file's title/year when release folders contain noisy labels."""
     folder_candidate = infer_search_terms(folder_name)
     parsed_folder = parse_media_name(folder_name + ".mkv")
     folder_candidates = [folder_candidate]
-    release_marker = MOVIE_RELEASE_MARKER_RE.search(unicodedata.normalize("NFKC", folder_name))
-    if release_marker:
-        release_title = folder_name[: release_marker.start()].strip(" ()[]【】._-")
-        if release_title:
-            folder_candidates.append((release_title, folder_candidate[1]))
+    release_title = release_folder_title(folder_name)
+    if release_title:
+        folder_candidates.insert(0, (release_title, folder_candidate[1]))
     if parsed_folder.title:
         folder_candidates.extend(
             (title, parsed_folder.year or folder_candidate[1])
@@ -338,6 +350,55 @@ def movie_search_candidates(folder_name: str, entries: list[Entry]) -> list[tupl
         seen.add(key)
         unique.append((title, year))
     return unique
+
+
+def tv_search_candidates(folder_name: str, entries: list[Entry]) -> list[tuple[str, int | None]]:
+    """Recover a series title from noisy folders or their episode filenames."""
+    folder_candidate = infer_search_terms(folder_name)
+    candidates: list[tuple[str, int | None]] = []
+    release_title = release_folder_title(folder_name)
+    if release_title:
+        candidates.append((release_title, folder_candidate[1]))
+    candidates.append(folder_candidate)
+    for entry in entries:
+        if extension_of(entry.name) not in VIDEO_EXTENSIONS:
+            continue
+        parsed = parse_media_name(entry.name, allow_bare_episode=True)
+        if parsed.kind in {"episode", "disc"} and parsed.title:
+            candidates.extend((title, parsed.year) for title in movie_title_variants(parsed.title))
+
+    unique: list[tuple[str, int | None]] = []
+    seen: set[tuple[str, int | None]] = set()
+    for title, year in candidates:
+        if not title:
+            continue
+        key = (normalized_title(title), year)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((title, year))
+    return unique
+
+
+def _find_tv_tmdb_id(
+    client: TMDBClient,
+    folder_name: str,
+    entries: list[Entry],
+) -> tuple[int | None, float, str, str | None, int | None]:
+    best_score = 0.0
+    best_reason = "could not infer title and year"
+    candidates = tv_search_candidates(folder_name, entries)
+    for title, year in candidates:
+        tmdb_id, score, reason = _find_tmdb_id(client, title, year, "tv")
+        if tmdb_id:
+            return tmdb_id, score, reason, title, year
+        if score > best_score:
+            best_score, best_reason = score, reason
+    if candidates:
+        title, year = candidates[0]
+    else:
+        title, year = None, None
+    return None, best_score, best_reason, title, year
 
 
 def _find_movie_tmdb_id(
@@ -474,8 +535,12 @@ def _process_detective_work(
                     PurePosixPath(work_path).name,
                     entries,
                 )
-            elif not tmdb_id and title:
-                tmdb_id, match_score, match_reason = _find_tmdb_id(tmdb, title, year, watch.kind)
+            elif not tmdb_id and watch.kind == "tv":
+                tmdb_id, match_score, match_reason, title, year = _find_tv_tmdb_id(
+                    tmdb,
+                    PurePosixPath(work_path).name,
+                    entries,
+                )
             if not tmdb_id:
                 current[work_path] = f"pending:{signature}"
                 events.append(
