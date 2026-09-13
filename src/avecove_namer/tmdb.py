@@ -174,5 +174,6 @@ class TMDBClient:
             "tmdb_id": tmdb_id,
             "original_language": original_language,
             "original_name": str(details.get("original_name") or ""),
+            "year": int(str(details.get("first_air_date"))[:4]) if details.get("first_air_date") else None,
             "episodes": episodes,
         }

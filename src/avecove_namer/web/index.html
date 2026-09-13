@@ -18,13 +18,13 @@
 <body>
   <div class="shell">
     <aside class="sidebar">
-      <a class="brand" href="#tmdb" aria-label="AveCove Media Tools 首页">
+      <a class="brand" href="#namer" aria-label="AveCove Media Tools 首页">
         <span class="brand-mark">A</span>
         <span><strong>AveCove</strong><small>Media Tools</small></span>
       </a>
       <nav aria-label="工具导航">
-        <button class="nav-item active" data-view="tmdb"><span>⌕</span>TMDb 查询</button>
-        <button class="nav-item" data-view="namer"><span>✦</span>Namer</button>
+        <button class="nav-item active" data-view="namer"><span>✦</span>Namer</button>
+        <button class="nav-item" data-view="tmdb"><span>⌕</span>TMDb 查询</button>
         <button class="nav-item" data-view="detective"><span>◉</span>识别记录</button>
         <button class="nav-item" data-view="emby"><span>↻</span>Emby 刷新</button>
       </nav>
@@ -37,12 +37,12 @@
     <main>
       <header class="topbar">
         <button class="mobile-menu" id="mobile-menu" aria-label="打开导航">☰</button>
-        <div><span class="eyebrow">PRIVATE WORKSPACE</span><h1 id="page-title">TMDb 查询</h1></div>
+        <div><span class="eyebrow">PRIVATE WORKSPACE</span><h1 id="page-title">Namer</h1></div>
         <a class="home-link" href="/">← 返回聚合页</a>
         <span class="date" id="today"></span>
       </header>
 
-      <section class="view active" id="view-tmdb">
+      <section class="view" id="view-tmdb">
         <div class="section-head">
           <div><h2>源语言元数据</h2><p>按 TMDb 原始语言读取剧集和全部单集标题、简介。</p></div>
           <div class="segmented" role="group" aria-label="媒体类型">
@@ -58,16 +58,22 @@
         <div id="tmdb-result" class="result-space empty-state"><span class="empty-icon">⌕</span><p>输入名称或 ID 开始查询</p></div>
       </section>
 
-      <section class="view" id="view-namer">
-        <div class="section-head"><div><h2>Namer 改名</h2><p>先生成只读预览，确认无冲突后再执行。</p></div><span class="safe-badge">默认只读</span></div>
+      <section class="view active" id="view-namer">
+        <div class="section-head"><div><h2>Namer 改名</h2><p>输入路径后自动识别 TMDb；确认作品信息，再生成只读预览。</p></div><span class="safe-badge">识别阶段不改文件</span></div>
+        <div class="path-presets" aria-label="常用路径">
+          <button type="button" data-path="/115/00剧/01美/">115 · 01美</button>
+          <button type="button" data-path="/115/00剧/01中/">115 · 01中</button>
+          <button type="button" data-path="/GuangYa/00剧/01美/">光鸭 · 01美</button>
+          <button type="button" data-path="/Baidu/00剧/01美/">百度 · 01美</button>
+        </div>
         <form class="form-card" id="namer-form">
           <label class="wide"><span>OpenList 媒体路径</span><input id="namer-path" placeholder="/115/00剧/01美/Modern Family" required></label>
-          <label><span>TMDb ID</span><input id="namer-id" inputmode="numeric" placeholder="1421" required></label>
           <label><span>类型</span><select id="namer-kind"><option value="tv">剧集</option><option value="movie">电影</option></select></label>
           <label><span>标题方式</span><select id="namer-style"><option value="auto">自动</option><option value="original">原名</option><option value="english">英文</option><option value="chinese">中文</option><option value="bilingual">双语</option></select></label>
-          <button class="primary align-end" type="submit">生成预览</button>
+          <details class="advanced-id"><summary>高级</summary><label><span>手动 TMDb ID（可选）</span><input id="namer-id" inputmode="numeric" placeholder="自动识别失败时填写"></label></details>
+          <button class="primary align-end" type="submit">自动识别</button>
         </form>
-        <div id="namer-result" class="result-space empty-state"><span class="empty-icon">✦</span><p>输入路径和 TMDb ID 生成改名预览</p></div>
+        <div id="namer-result" class="result-space empty-state"><span class="empty-icon">✦</span><p>输入具体作品路径，先识别再预览</p></div>
       </section>
 
       <section class="view" id="view-detective">

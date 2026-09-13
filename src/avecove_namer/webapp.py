@@ -21,6 +21,7 @@ import urllib.request
 from urllib.parse import parse_qs, urlparse
 
 from .backends import BackendError, OpenListBackend
+from .detective import _find_movie_tmdb_id, _find_tv_tmdb_id
 from .executor import ExecutionError, execute_plan
 from .models import RenamePlan
 from .naming import NamingPolicy
@@ -250,14 +251,66 @@ class App:
             raise ValueError("请输入 TMDb 剧集 ID 或剧名")
         client = self.tmdb()
         if value.isdecimal():
-            return client.original_episode_metadata(int(value))
+            data = client.original_episode_metadata(int(value))
+            data["recommended_name"] = recommended_folder_name(
+                {
+                    "id": data["tmdb_id"],
+                    "title": data["original_name"],
+                    "original_title": data["original_name"],
+                    "year": data.get("year"),
+                    "language": data["original_language"],
+                }
+            )
+            return data
         results = client.search(value, "tv", None, "zh-CN")
         if not results:
             raise ValueError("没有找到该剧")
         exact = [item for item in results if value.casefold() in {str(item.get("title") or "").casefold(), str(item.get("original_title") or "").casefold()}]
         if len(exact) == 1:
-            return client.original_episode_metadata(int(exact[0]["id"]))
+            return self.source_episodes({"tmdb_id": int(exact[0]["id"])})
         return {"selection_required": True, "results": results}
+
+    def identify_path(self, payload: dict[str, Any]) -> dict[str, Any]:
+        path = safe_cloud_path(payload.get("path"))
+        kind = str(payload.get("kind") or "tv")
+        style = str(payload.get("title_style") or "auto")
+        if kind not in {"tv", "movie"}:
+            raise ValueError("媒体类型无效")
+        client = self.tmdb()
+        supplied_id = int(payload.get("tmdb_id") or 0)
+        score = 1.0
+        reason = "手动指定 TMDb ID"
+        query_title = None
+        query_year = None
+        if supplied_id:
+            tmdb_id = supplied_id
+        else:
+            entries = self.openlist().scan(path, refresh=True)
+            finder = _find_tv_tmdb_id if kind == "tv" else _find_movie_tmdb_id
+            tmdb_id, score, reason, query_title, query_year = finder(client, PurePosixPath(path).name, entries)
+            if not tmdb_id:
+                raise ValueError(f"未能高置信度识别：{reason}。可以在高级选项中手动填写 TMDb ID。")
+        resolved = client.resolve_title(tmdb_id, kind, style)
+        recommended_name = recommended_folder_name(
+            {
+                "id": tmdb_id,
+                "title": resolved["title"],
+                "original_title": resolved["title"],
+                "year": resolved.get("year"),
+                "language": resolved.get("original_language"),
+            }
+        )
+        return {
+            "path": path,
+            "kind": kind,
+            "tmdb_id": tmdb_id,
+            "score": round(score, 4),
+            "reason": reason,
+            "query_title": query_title,
+            "query_year": query_year,
+            "recommended_name": recommended_name,
+            "resolved": resolved,
+        }
 
     def create_plan(self, payload: dict[str, Any]) -> dict[str, Any]:
         path = safe_cloud_path(payload.get("path"))
@@ -358,15 +411,26 @@ class App:
             self._jobs[job_id].update(update)
 
     def detective(self) -> dict[str, Any]:
-        if not self.settings.detective_summary.is_file():
+        candidates = []
+        if self.settings.detective_summary.is_file():
+            candidates.append(self.settings.detective_summary)
+        candidates.extend(sorted(self.settings.detective_summary.parent.glob("*/last-summary.json")))
+        candidates = list(dict.fromkeys(candidates))
+        if not candidates:
             return {"created_at": None, "events": [], "counts": {}}
-        data = json.loads(self.settings.detective_summary.read_text(encoding="utf-8"))
-        events = list(data.get("events") or [])
+        events: list[dict[str, Any]] = []
+        created_values: list[str] = []
+        for summary_path in candidates:
+            data = json.loads(summary_path.read_text(encoding="utf-8"))
+            created_values.append(str(data.get("created_at") or ""))
+            provider = summary_path.parent.name if summary_path.parent != self.settings.detective_summary.parent else "legacy"
+            for event in data.get("events") or []:
+                events.append({"provider": provider, **event})
         counts: dict[str, int] = {}
         for event in events:
             status = str(event.get("status") or "unknown")
             counts[status] = counts.get(status, 0) + 1
-        return {"created_at": data.get("created_at"), "events": events, "counts": counts}
+        return {"created_at": max(created_values, default="") or None, "events": events, "counts": counts}
 
     def start_refresh(self, prefix: object) -> str:
         media_path = safe_cloud_path(prefix)
@@ -499,6 +563,7 @@ def handler_factory(app: App):
                     "/api/tmdb/search": app.search,
                     "/api/tmdb/source": app.source_episodes,
                     "/api/namer/plan": app.create_plan,
+                    "/api/namer/identify": app.identify_path,
                     "/api/namer/apply": app.apply_plan,
                     "/api/emby/refresh": lambda payload: {"job_id": app.start_refresh(payload.get("path"))},
                     "/api/watch/recommendations": app.watch_recommendations,

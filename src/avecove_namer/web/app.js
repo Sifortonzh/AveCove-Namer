@@ -98,9 +98,16 @@ async function loadSource(id) {
   try {
     const data = await api('/api/tmdb/source', {tmdb_id: id});
     lastSourceData = data;
+    const seasons = data.episodes.reduce((groups, episode) => {
+      (groups[episode.season] ||= []).push(episode);
+      return groups;
+    }, {});
     target.className = 'result-space result-card';
-    target.innerHTML = `<div class="result-toolbar"><div><strong>${escapeHtml(data.original_name)}</strong><div class="meta">TMDb ${data.tmdb_id} · ${escapeHtml(data.original_language)} · ${data.episodes.length} 集</div></div><div class="actions"><button class="mini-button" id="copy-json">复制 JSON</button><button class="mini-button" id="download-json">下载 JSON</button></div></div>
-      <div class="table-wrap"><table><thead><tr><th>季</th><th>集</th><th>源语言标题</th><th>源语言简介</th></tr></thead><tbody>${data.episodes.map(ep => `<tr><td class="num">S${String(ep.season).padStart(2,'0')}</td><td class="num">E${String(ep.episode).padStart(2,'0')}</td><td>${escapeHtml(ep.name) || '—'}</td><td class="overview">${escapeHtml(ep.overview) || '—'}</td></tr>`).join('')}</tbody></table></div>`;
+    target.innerHTML = `<div class="result-toolbar"><div><strong>${escapeHtml(data.original_name)}</strong><div class="meta">${data.year || '年份未知'} · TMDb ${data.tmdb_id} · ${escapeHtml(data.original_language)} · ${data.episodes.length} 集</div></div><div class="actions"><button class="mini-button" id="copy-tmdb-id">复制 ID</button><button class="mini-button" id="copy-source-name">复制名称</button><button class="mini-button" id="copy-json">复制源数据</button><button class="mini-button" id="download-json">下载</button></div></div>
+      <div class="source-name-bar"><code>${escapeHtml(data.recommended_name || '')}</code></div>
+      <div class="season-groups">${Object.entries(seasons).sort((a,b) => Number(a[0]) - Number(b[0])).map(([season, episodes], index) => `<details class="season-group" ${index === 0 ? 'open' : ''}><summary><span>Season ${String(season).padStart(2,'0')}</span><small>${episodes.length} 集</small></summary><div class="table-wrap"><table><thead><tr><th>集</th><th>源语言标题</th><th>源语言简介</th></tr></thead><tbody>${episodes.map(ep => `<tr><td class="num">E${String(ep.episode).padStart(2,'0')}</td><td>${escapeHtml(ep.name) || '—'}</td><td class="overview">${escapeHtml(ep.overview) || '—'}</td></tr>`).join('')}</tbody></table></div></details>`).join('')}</div>`;
+    $('#copy-tmdb-id').addEventListener('click', async () => { await navigator.clipboard.writeText(String(data.tmdb_id)); toast('TMDb ID 已复制'); });
+    $('#copy-source-name').addEventListener('click', async () => { await navigator.clipboard.writeText(data.recommended_name || data.original_name); toast('规范名称已复制'); });
     $('#copy-json').addEventListener('click', async () => { await navigator.clipboard.writeText(JSON.stringify(lastSourceData, null, 2)); toast('JSON 已复制'); });
     $('#download-json').addEventListener('click', downloadSource);
   } catch (error) { fail(target, error); }
@@ -118,12 +125,38 @@ function downloadSource() {
 $('#namer-form').addEventListener('submit', async event => {
   event.preventDefault();
   const target = $('#namer-result');
-  loading(target, '正在扫描目录并生成只读计划');
+  loading(target, '正在读取目录并调用 TMDb 识别');
   try {
-    const data = await api('/api/namer/plan', {path:$('#namer-path').value, tmdb_id:$('#namer-id').value, kind:$('#namer-kind').value, title_style:$('#namer-style').value});
-    renderPlan(data);
+    const data = await api('/api/namer/identify', {path:$('#namer-path').value, tmdb_id:$('#namer-id').value, kind:$('#namer-kind').value, title_style:$('#namer-style').value});
+    renderIdentification(data);
   } catch (error) { fail(target, error); }
 });
+
+$$('.path-presets button').forEach(button => button.addEventListener('click', () => {
+  const input = $('#namer-path');
+  input.value = button.dataset.path;
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}));
+
+function renderIdentification(data) {
+  const target = $('#namer-result');
+  const confidence = Math.round((data.score || 0) * 100);
+  target.className = 'result-space match-card';
+  target.innerHTML = `<div class="match-mark">✓</div><div class="match-copy"><span class="eyebrow">TMDb MATCH</span><h3>${escapeHtml(data.resolved.title)}</h3><p>${data.resolved.year || '年份未知'} · TMDb ${data.tmdb_id} · 源语言 ${escapeHtml(data.resolved.original_language || '未知')}</p><div class="copy-name"><code>${escapeHtml(data.recommended_name)}</code><button class="mini-button" id="copy-match-name">复制名称</button></div><small>${escapeHtml(data.reason)}${confidence ? ` · 置信度 ${confidence}%` : ''}</small></div><div class="match-actions"><button class="secondary" id="retry-identify">重新识别</button><button class="primary" id="confirm-match">信息正确，生成预览</button></div>`;
+  $('#copy-match-name').addEventListener('click', async () => { await navigator.clipboard.writeText(data.recommended_name); toast('规范名称已复制'); });
+  $('#retry-identify').addEventListener('click', () => $('#namer-path').focus());
+  $('#confirm-match').addEventListener('click', () => createNamerPlan(data.tmdb_id));
+}
+
+async function createNamerPlan(tmdbId) {
+  const target = $('#namer-result');
+  loading(target, '正在生成只读改名预览');
+  try {
+    const data = await api('/api/namer/plan', {path:$('#namer-path').value, tmdb_id:tmdbId, kind:$('#namer-kind').value, title_style:$('#namer-style').value});
+    renderPlan(data);
+  } catch (error) { fail(target, error); }
+}
 
 function renderPlan(plan) {
   const target = $('#namer-result');
@@ -132,9 +165,11 @@ function renderPlan(plan) {
   target.innerHTML = `<div class="result-toolbar"><div><strong>${escapeHtml(plan.resolved.title)}</strong><div class="meta">${escapeHtml(plan.root)} · ${plan.operations.length} 项修改 · ${plan.skipped.length} 项跳过</div></div><span class="status ${blocked ? 'failed' : (plan.operations.length ? 'planned' : 'compliant')}">${blocked ? '有冲突' : (plan.operations.length ? '等待确认' : '已规范')}</span></div>
     ${blocked ? `<div class="conflict-box">${plan.conflicts.map(escapeHtml).join('<br>')}</div>` : ''}
     <div class="table-wrap"><table><thead><tr><th>类型</th><th>改名前 → 改名后</th></tr></thead><tbody>${plan.operations.map(op => `<tr><td>${escapeHtml(op.kind)}</td><td><div class="operation"><span class="from">${escapeHtml(op.source)}</span><span class="arrow">↓</span><span class="to">${escapeHtml(op.target)}</span></div></td></tr>`).join('') || '<tr><td colspan="2">无需修改</td></tr>'}</tbody></table></div>
-    ${!blocked && plan.operations.length ? `<div class="apply-panel"><label><span>输入“执行 ${plan.operations.length} 项”</span><input id="apply-confirm" autocomplete="off" placeholder="执行 ${plan.operations.length} 项"></label><button class="primary danger" id="apply-plan">确认执行</button></div>` : ''}`;
+    ${!blocked && plan.operations.length ? `<div class="apply-panel"><label><span>执行确认</span><div class="confirm-row"><input id="apply-confirm" autocomplete="off" placeholder="执行 ${plan.operations.length} 项"><button class="secondary" type="button" id="fill-confirm">一键填入</button></div></label><button class="primary danger" id="apply-plan">确认执行</button></div>` : ''}`;
   const button = $('#apply-plan');
   if (button) button.addEventListener('click', () => applyPlan(plan.plan_id, plan.operations.length));
+  const fillButton = $('#fill-confirm');
+  if (fillButton) fillButton.addEventListener('click', () => { $('#apply-confirm').value = `执行 ${plan.operations.length} 项`; toast('确认文字已填入'); });
 }
 
 async function applyPlan(planId, count) {
@@ -171,7 +206,7 @@ async function loadDetective() {
     $('#detective-summary').innerHTML = keys.map(([key,label]) => `<div class="stat"><b>${data.counts[key] || 0}</b><span>${label}</span></div>`).join('');
     if (!data.events.length) { target.className='result-space empty-state'; target.innerHTML='<span class="empty-icon">◉</span><p>还没有检测记录</p>'; return; }
     target.className = 'result-space event-list';
-    target.innerHTML = [...data.events].reverse().map(event => `<article class="event-item"><div><h3>${escapeHtml(event.path)}</h3><p>${escapeHtml(event.reason || (event.tmdb_id ? `TMDb ${event.tmdb_id}` : ''))}</p></div><span class="status ${escapeHtml(event.status)}">${statusLabel(event.status)}</span></article>`).join('');
+    target.innerHTML = [...data.events].reverse().map(event => `<article class="event-item"><div><h3>${escapeHtml(event.path)}</h3><p><b class="provider-tag">${escapeHtml(event.provider || 'Namer')}</b>${escapeHtml(event.reason || (event.tmdb_id ? `TMDb ${event.tmdb_id}` : ''))}</p></div><span class="status ${escapeHtml(event.status)}">${statusLabel(event.status)}</span></article>`).join('');
   } catch (error) { fail(target, error); }
 }
 
