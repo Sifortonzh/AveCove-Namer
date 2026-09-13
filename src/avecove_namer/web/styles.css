@@ -78,6 +78,9 @@ main { min-width: 0; padding: 0 clamp(22px, 5vw, 72px) 70px; background: radial-
 .topbar h1 { margin: 2px 0 0; font-size: 22px; letter-spacing: -.025em; }
 .eyebrow { color: var(--accent-2); font-size: 10px; font-weight: 750; letter-spacing: .17em; }
 .date { margin-left: auto; color: var(--muted); font-size: 13px; }
+.home-link { margin-left:auto; padding:8px 11px; color:var(--muted); border:1px solid var(--line); border-radius:9px; background:var(--surface); text-decoration:none; font-size:12px; }
+.home-link:hover { color:var(--text); border-color:color-mix(in srgb,var(--muted) 65%,transparent); }
+.home-link + .date { margin-left:0; }
 .mobile-menu { display: none; color: var(--text); border: 0; background: transparent; font-size: 22px; }
 .view { display: none; max-width: 1180px; margin: 0 auto; padding-top: 42px; animation: enter .2s ease-out; }
 .view.active { display: block; }
@@ -130,6 +133,9 @@ td.overview { min-width: 380px; color: #b0b6c1; }
 .search-item, .event-item { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 16px; padding: 16px 18px; border: 1px solid var(--line-soft); border-radius: 13px; background: var(--surface); }
 .search-item h3, .event-item h3 { margin: 0; font-size: 15px; font-weight: 650; }
 .search-item p, .event-item p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.copy-name { display:flex; align-items:center; gap:8px; margin-top:11px; padding:8px 9px; border:1px solid var(--line-soft); border-radius:9px; background:var(--surface-2); }
+.copy-name code { min-width:0; flex:1; overflow:hidden; color:var(--text); font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+.copy-name .mini-button { flex:0 0 auto; }
 .id-tag { color: #aab0bb; font-variant-numeric: tabular-nums; }
 .operation { display: grid; gap: 4px; }
 .operation .from { color: var(--muted); }
@@ -171,6 +177,7 @@ pre { max-height: 320px; overflow: auto; padding: 14px; color: var(--code-text);
   .section-head { align-items: flex-start; flex-direction: column; gap: 14px; }
   .command-bar, .form-card { display: grid; grid-template-columns: 1fr; padding: 14px; }
   .year-field { width: 100%; }
+  .topbar .home-link { margin-left:auto; }
   .primary { width: 100%; }
   .stats { grid-template-columns: 1fr 1fr; }
   .search-item, .event-item { align-items: start; }

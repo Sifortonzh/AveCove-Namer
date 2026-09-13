@@ -64,6 +64,32 @@ class TMDBClient:
             )
         return output
 
+    def trending(self, kind: str = "tv", language: str = "zh-CN") -> list[dict[str, object]]:
+        if kind not in {"tv", "movie"}:
+            raise TMDBError("TMDB kind must be tv or movie")
+        payload = self._get(f"/trending/{kind}/week", {"language": language})
+        output: list[dict[str, object]] = []
+        for item in payload.get("results", [])[:20]:
+            title = item.get("name") if kind == "tv" else item.get("title")
+            original = item.get("original_name") if kind == "tv" else item.get("original_title")
+            date = item.get("first_air_date") if kind == "tv" else item.get("release_date")
+            output.append(
+                {
+                    "id": item.get("id"),
+                    "title": title,
+                    "original_title": original,
+                    "year": int(date[:4]) if isinstance(date, str) and len(date) >= 4 else None,
+                    "language": item.get("original_language"),
+                    "overview": item.get("overview"),
+                    "genre_ids": item.get("genre_ids") or [],
+                    "poster_path": item.get("poster_path"),
+                    "popularity": item.get("popularity"),
+                    "rating": item.get("vote_average"),
+                    "kind": kind,
+                }
+            )
+        return output
+
     def details(self, tmdb_id: int, kind: str, language: str) -> dict[str, object]:
         if kind not in {"tv", "movie"}:
             raise TMDBError("TMDB kind must be tv or movie")

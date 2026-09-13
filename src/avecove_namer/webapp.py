@@ -9,10 +9,15 @@ import json
 import mimetypes
 import os
 from pathlib import Path, PurePosixPath
+import random
 import secrets
+import sqlite3
 import subprocess
 import threading
 from typing import Any
+import urllib.error
+import urllib.parse
+import urllib.request
 from urllib.parse import parse_qs, urlparse
 
 from .backends import BackendError, OpenListBackend
@@ -25,6 +30,23 @@ from .tmdb import TMDBClient, TMDBError
 
 MAX_BODY = 32 * 1024
 ALLOWED_ROOTS = ("/115/", "/Baidu/", "/Quark/", "/123/", "/GuangYa/")
+
+
+def recommended_folder_name(item: dict[str, object]) -> str:
+    language = str(item.get("language") or "").casefold()
+    chinese_origin = language in {"zh", "cn", "yue"}
+    if chinese_origin:
+        title = str(item.get("title") or item.get("original_title") or "").strip()
+    else:
+        title = str(item.get("original_title") or item.get("title") or "").strip()
+    title = title.replace("/", " ").replace("\\", " ").strip()
+    year = int(item.get("year") or 0)
+    tmdb_id = int(item.get("id") or 0)
+    if not title or not year or not tmdb_id:
+        return ""
+    if chinese_origin:
+        return f"{title}（{year}） {{tmdb={tmdb_id}}}"
+    return f"{title} ({year}) {{tmdb={tmdb_id}}}"
 
 
 def utc_now() -> str:
@@ -57,6 +79,9 @@ class Settings:
     work_root: Path
     detective_summary: Path
     refresh_worker: Path
+    emby_url: str = "http://127.0.0.1:8097"
+    emby_auth_db: Path = Path("/opt/docker/emby/config/data/authentication.db")
+    emby_username: str = "zhongyunxing"
 
     @classmethod
     def from_env(cls, host: str, port: int) -> "Settings":
@@ -69,6 +94,9 @@ class Settings:
             work_root=Path(os.getenv("AVECOVE_NAMER_WORK_ROOT", "/opt/docker/avecove-namer/web-jobs")),
             detective_summary=Path(os.getenv("AVECOVE_DETECTIVE_SUMMARY", "/opt/docker/avecove-namer/detective/last-summary.json")),
             refresh_worker=Path(os.getenv("AVECOVE_REFRESH_WORKER", "/opt/emby-strm/refresh-one-source-openlist-lowload.py")),
+            emby_url=os.getenv("AVECOVE_EMBY_URL", "http://127.0.0.1:8097"),
+            emby_auth_db=Path(os.getenv("AVECOVE_EMBY_AUTH_DB", "/opt/docker/emby/config/data/authentication.db")),
+            emby_username=os.getenv("AVECOVE_EMBY_USERNAME", "zhongyunxing"),
         )
 
 
@@ -92,7 +120,129 @@ class App:
         kind = str(payload.get("kind") or "tv")
         year_value = payload.get("year")
         year = int(year_value) if year_value else None
-        return {"results": self.tmdb().search(query, kind, year, "zh-CN")}
+        results = self.tmdb().search(query, kind, year, "zh-CN")
+        for item in results:
+            item["recommended_name"] = recommended_folder_name(item)
+        return {"results": results}
+
+    def _emby_token(self) -> str:
+        with sqlite3.connect(self.settings.emby_auth_db) as database:
+            row = database.execute(
+                "SELECT AccessToken FROM Tokens_2 WHERE IsActive=1 ORDER BY DateLastActivityInt DESC LIMIT 1"
+            ).fetchone()
+        if not row or not row[0]:
+            raise ValueError("Emby 没有可用的服务端令牌")
+        return str(row[0])
+
+    def _emby_get(self, path: str, params: dict[str, object] | None = None) -> Any:
+        url = self.settings.emby_url.rstrip("/") + "/emby" + path
+        if params:
+            url += "?" + urllib.parse.urlencode(params)
+        request = urllib.request.Request(url, headers={"X-Emby-Token": self._emby_token(), "User-Agent": "AveCove-Media/1"})
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                content_type = response.headers.get_content_type()
+                if content_type.startswith("image/"):
+                    return response.read(), content_type
+                return json.load(response)
+        except (urllib.error.URLError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Emby 连接失败：{exc}") from exc
+
+    def _emby_user_id(self) -> str:
+        users = self._emby_get("/Users")
+        for user in users if isinstance(users, list) else []:
+            if str(user.get("Name") or "") == self.settings.emby_username:
+                return str(user["Id"])
+        raise ValueError("找不到指定的 Emby 用户")
+
+    def watch_recommendations(self, payload: dict[str, Any]) -> dict[str, Any]:
+        source = str(payload.get("source") or "emby")
+        kind = str(payload.get("kind") or "all")
+        mood = str(payload.get("mood") or "all")
+        if source not in {"emby", "trending"} or kind not in {"all", "movie", "tv"}:
+            raise ValueError("推荐条件无效")
+        if source == "trending":
+            selected_kind = "tv" if kind == "all" else kind
+            items = self.tmdb().trending(selected_kind, "zh-CN")
+            genre_sets = {
+                "relaxed": {16, 35, 10751, 10762},
+                "spectacle": {12, 14, 28, 878, 10759, 10765},
+                "mystery": {53, 80, 9648},
+            }
+            allowed = genre_sets.get(mood)
+            if allowed:
+                filtered = [item for item in items if allowed.intersection(int(value) for value in item.get("genre_ids", []))]
+                items = filtered or items
+            return {
+                "source": "trending",
+                "items": [
+                    {
+                        "id": str(item["id"]),
+                        "title": item.get("title") or item.get("original_title"),
+                        "original": item.get("original_title") or item.get("title"),
+                        "year": item.get("year"),
+                        "minutes": None,
+                        "genres": "TMDb 本周热门",
+                        "note": item.get("overview") or "近期热度较高，适合加入待看片单。",
+                        "kind": item.get("kind"),
+                        "image_url": f"https://image.tmdb.org/t/p/w780{item['poster_path']}" if item.get("poster_path") else None,
+                        "open_url": f"https://www.themoviedb.org/{item['kind']}/{item['id']}",
+                        "rating": item.get("rating"),
+                    }
+                    for item in items
+                ],
+            }
+
+        include_types = {"all": "Movie,Series", "movie": "Movie", "tv": "Series"}[kind]
+        data = self._emby_get(
+            f"/Users/{self._emby_user_id()}/Items",
+            {
+                "Recursive": "true",
+                "IncludeItemTypes": include_types,
+                "Fields": "Genres,Overview,RunTimeTicks,ProductionYear,CommunityRating,ImageTags,OriginalTitle",
+                "SortBy": "Random",
+                "Limit": 120,
+            },
+        )
+        items = list(data.get("Items") or []) if isinstance(data, dict) else []
+        mood_terms = {
+            "relaxed": {"喜剧", "comedy", "动画", "animation", "家庭", "family"},
+            "spectacle": {"动作", "action", "冒险", "adventure", "科幻", "science fiction", "奇幻", "fantasy"},
+            "mystery": {"悬疑", "mystery", "犯罪", "crime", "惊悚", "thriller"},
+        }
+        if mood == "short":
+            filtered = [item for item in items if 0 < int(item.get("RunTimeTicks") or 0) / 600_000_000 <= 110]
+            items = filtered or items
+        elif mood in mood_terms:
+            wanted = mood_terms[mood]
+            filtered = [item for item in items if any(str(genre).casefold() in wanted for genre in item.get("Genres") or [])]
+            items = filtered or items
+        random.shuffle(items)
+        output = []
+        for item in items[:30]:
+            ticks = int(item.get("RunTimeTicks") or 0)
+            item_id = str(item.get("Id") or "")
+            output.append(
+                {
+                    "id": item_id,
+                    "title": item.get("Name"),
+                    "original": item.get("OriginalTitle") or item.get("Name"),
+                    "year": item.get("ProductionYear"),
+                    "minutes": round(ticks / 600_000_000) if ticks else None,
+                    "genres": " · ".join(str(value) for value in (item.get("Genres") or [])[:3]),
+                    "note": item.get("Overview") or "来自你的 Emby 片库，今晚可以直接打开观看。",
+                    "kind": "tv" if item.get("Type") == "Series" else "movie",
+                    "image_url": f"/media-tools/api/watch/image/{item_id}" if item.get("ImageTags", {}).get("Primary") else None,
+                    "open_url": f"https://emby.avecrouge.top/web/index.html#!/item?id={item_id}",
+                    "rating": item.get("CommunityRating"),
+                }
+            )
+        return {"source": "emby", "total": data.get("TotalRecordCount", len(output)), "items": output}
+
+    def emby_image(self, item_id: str) -> tuple[bytes, str]:
+        if not item_id or not item_id.isalnum():
+            raise ValueError("图片编号无效")
+        return self._emby_get(f"/Items/{item_id}/Images/Primary", {"maxWidth": 780, "quality": 86})
 
     def source_episodes(self, payload: dict[str, Any]) -> dict[str, Any]:
         value = str(payload.get("query") or payload.get("tmdb_id") or "").strip()
@@ -280,6 +430,15 @@ def handler_factory(app: App):
             self.end_headers()
             self.wfile.write(body)
 
+        def binary_response(self, status: int, body: bytes, content_type: str) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "private, max-age=3600")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(body)
+
         def read_json(self) -> dict[str, Any]:
             length = int(self.headers.get("Content-Length") or 0)
             if length < 1 or length > MAX_BODY:
@@ -306,6 +465,10 @@ def handler_factory(app: App):
                     return
                 if path == "/api/detective":
                     self.json_response(HTTPStatus.OK, app.detective())
+                    return
+                if path.startswith("/api/watch/image/"):
+                    body, content_type = app.emby_image(path.rsplit("/", 1)[-1])
+                    self.binary_response(HTTPStatus.OK, body, content_type)
                     return
                 if path.startswith("/api/jobs/"):
                     self.json_response(HTTPStatus.OK, app.job(path.rsplit("/", 1)[-1]))
@@ -338,6 +501,7 @@ def handler_factory(app: App):
                     "/api/namer/plan": app.create_plan,
                     "/api/namer/apply": app.apply_plan,
                     "/api/emby/refresh": lambda payload: {"job_id": app.start_refresh(payload.get("path"))},
+                    "/api/watch/recommendations": app.watch_recommendations,
                 }
                 action = routes.get(routed_path(self.path))
                 if not action:

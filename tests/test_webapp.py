@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from avecove_namer.webapp import Settings, safe_cloud_path
+from avecove_namer.webapp import Settings, recommended_folder_name, safe_cloud_path
 
 
 class WebAppTests(unittest.TestCase):
@@ -29,3 +29,13 @@ class WebAppTests(unittest.TestCase):
                 refresh_worker=Path(directory) / "refresh.py",
             )
             self.assertEqual(settings.port, 8787)
+
+    def test_recommended_folder_name_follows_origin_punctuation(self):
+        self.assertEqual(
+            recommended_folder_name({"id": 24, "title": "杀死比尔", "original_title": "Kill Bill: Vol. 1", "year": 2003, "language": "en"}),
+            "Kill Bill: Vol. 1 (2003) {tmdb=24}",
+        )
+        self.assertEqual(
+            recommended_folder_name({"id": 123, "title": "漫长的季节", "original_title": "漫长的季节", "year": 2023, "language": "zh"}),
+            "漫长的季节（2023） {tmdb=123}",
+        )

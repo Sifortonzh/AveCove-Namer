@@ -82,10 +82,14 @@ function renderSearch(results, kind) {
   if (!results.length) return fail(target, new Error('没有找到匹配结果'));
   target.className = 'result-space search-list';
   target.innerHTML = results.map(item => `<article class="search-item">
-    <div><h3>${escapeHtml(item.title || item.original_title || '未命名')}</h3><p>${escapeHtml(item.original_title || '')}${item.year ? ` · ${item.year}` : ''} · ${escapeHtml(item.language || '未知语言')} · <span class="id-tag">TMDb ${item.id}</span></p></div>
+    <div><h3>${escapeHtml(item.title || item.original_title || '未命名')}</h3><p>${escapeHtml(item.original_title || '')}${item.year ? ` · ${item.year}` : ''} · ${escapeHtml(item.language || '未知语言')} · <span class="id-tag">TMDb ${item.id}</span></p>${item.recommended_name ? `<div class="copy-name"><code>${escapeHtml(item.recommended_name)}</code><button class="mini-button copy-name-button" data-name="${escapeHtml(item.recommended_name)}">复制名称</button></div>` : ''}</div>
     ${kind === 'tv' ? `<button class="mini-button source-button" data-id="${item.id}">源语言单集</button>` : ''}
   </article>`).join('');
   $$('.source-button').forEach(button => button.addEventListener('click', () => loadSource(button.dataset.id)));
+  $$('.copy-name-button').forEach(button => button.addEventListener('click', async () => {
+    await navigator.clipboard.writeText(button.dataset.name);
+    toast('规范名称已复制');
+  }));
 }
 
 async function loadSource(id) {
