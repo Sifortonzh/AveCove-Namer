@@ -31,6 +31,12 @@ from .tmdb import TMDBClient, TMDBError
 
 MAX_BODY = 32 * 1024
 ALLOWED_ROOTS = ("/115/", "/Baidu/", "/Quark/", "/123/", "/GuangYa/")
+BROAD_NAMER_PATHS = {
+    "/115/00剧/01美",
+    "/115/00剧/01中",
+    "/GuangYa/00剧/01美",
+    "/Baidu/00剧/01美",
+}
 
 
 def recommended_folder_name(item: dict[str, object]) -> str:
@@ -272,6 +278,8 @@ class App:
 
     def identify_path(self, payload: dict[str, Any]) -> dict[str, Any]:
         path = safe_cloud_path(payload.get("path"))
+        if path.rstrip("/") in BROAD_NAMER_PATHS:
+            raise ValueError("请在常用路径后继续填写具体作品文件夹，避免扫描整个媒体库")
         kind = str(payload.get("kind") or "tv")
         style = str(payload.get("title_style") or "auto")
         if kind not in {"tv", "movie"}:
