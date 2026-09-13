@@ -5,6 +5,14 @@ let mediaKind = 'tv';
 let lastSourceData = null;
 const basePath = location.pathname.startsWith('/media-tools') ? '/media-tools' : '';
 
+function applyScene() {
+  const hour = new Date().getHours();
+  const scene = hour < 5 || hour >= 21 ? 'night' : hour < 11 ? 'morning' : hour < 17 ? 'day' : 'evening';
+  document.documentElement.dataset.scene = scene;
+  const colors = { morning:'#fff5e9', day:'#edf5fb', evening:'#f7eef4', night:'#090b10' };
+  document.querySelector('meta[name="theme-color"]').content = colors[scene];
+}
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 }
@@ -198,6 +206,8 @@ async function checkHealth() {
 }
 
 $('#today').textContent = new Intl.DateTimeFormat('zh-CN', {month:'long', day:'numeric', weekday:'short'}).format(new Date());
+applyScene();
+setInterval(applyScene, 300000);
 const initial = location.hash.slice(1);
 if (titles[initial]) switchView(initial);
 checkHealth();
