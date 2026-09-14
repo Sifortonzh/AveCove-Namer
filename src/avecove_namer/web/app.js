@@ -135,6 +135,7 @@ $('#namer-form').addEventListener('submit', async event => {
 $$('.path-presets button').forEach(button => button.addEventListener('click', () => {
   const input = $('#namer-path');
   input.value = button.dataset.path;
+  $('#namer-kind').value = button.dataset.kind || 'tv';
   input.focus();
   input.setSelectionRange(input.value.length, input.value.length);
 }));
