@@ -99,6 +99,10 @@ main { min-width: 0; padding: 0 clamp(22px, 5vw, 72px) 70px; background: radial-
 .path-presets button:hover { color:var(--text); border-color:var(--accent); }
 .advanced-id { min-width:150px; padding:0 4px 1px; }
 .advanced-id summary { margin-bottom:8px; color:var(--muted); cursor:pointer; font-size:12px; }
+.source-parent-option { grid-column:1 / -1; }
+.check-field { display:flex; align-items:center; gap:9px; color:var(--muted); cursor:pointer; }
+.check-field input { width:18px; min-height:18px; margin:0; accent-color:var(--accent); }
+.check-field span { font-size:12px; font-weight:600; }
 label { display: grid; gap: 7px; min-width: 0; }
 label > span { color: var(--muted); font-size: 12px; font-weight: 650; }
 .grow, .wide { flex: 1; }
@@ -138,6 +142,7 @@ input:focus, select:focus { border-color: rgb(228 75 95 / .75); box-shadow: 0 0 
 .result-toolbar strong { font-size: 14px; }
 .result-toolbar .meta { color: var(--muted); font-size: 12px; }
 .result-toolbar .actions { display: flex; gap: 8px; margin-left: auto; }
+.search-item > .actions { display:flex; gap:8px; }
 .mini-button { padding: 7px 10px; color: var(--text); border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); font-size: 12px; }
 .mini-button:hover { border-color: color-mix(in srgb, var(--muted) 65%, transparent); }
 .table-wrap { overflow: auto; max-height: 62vh; }

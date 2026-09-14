@@ -413,6 +413,7 @@ class App:
             raise ValueError("请在常用路径后继续填写具体作品文件夹，避免扫描整个媒体库")
         kind = str(payload.get("kind") or "tv")
         style = str(payload.get("title_style") or "auto")
+        source_parent = bool(payload.get("source_parent"))
         if kind not in {"tv", "movie"}:
             raise ValueError("媒体类型无效")
         client = self.tmdb()
@@ -430,13 +431,18 @@ class App:
             if not tmdb_id:
                 raise ValueError(f"未能高置信度识别：{reason}。可以在高级选项中手动填写 TMDb ID。")
         resolved = client.resolve_title(tmdb_id, kind, style)
+        parent_title = str(resolved["original_title"] if source_parent else resolved["title"])
+        child_title = str(resolved["english_title"] if source_parent else resolved["title"])
+        parent_language = (
+            "zh" if str(resolved.get("original_language") or "").casefold() in {"zh", "cn", "yue"} else "en"
+        ) if source_parent else str(resolved["primary_language"])
         recommended_name = recommended_folder_name(
             {
                 "id": tmdb_id,
-                "title": resolved["title"],
-                "original_title": resolved["title"],
+                "title": parent_title,
+                "original_title": parent_title,
                 "year": resolved.get("year"),
-                "language": resolved.get("original_language"),
+                "language": parent_language,
             }
         )
         return {
@@ -448,6 +454,9 @@ class App:
             "query_title": query_title,
             "query_year": query_year,
             "recommended_name": recommended_name,
+            "parent_title": parent_title,
+            "child_title": child_title,
+            "source_parent": source_parent,
             "resolved": resolved,
         }
 
@@ -460,7 +469,13 @@ class App:
         if kind not in {"tv", "movie"}:
             raise ValueError("媒体类型无效")
         style = str(payload.get("title_style") or "auto")
+        source_parent = bool(payload.get("source_parent"))
         resolved = self.tmdb().resolve_title(tmdb_id, kind, style)
+        parent_title = str(resolved["original_title"] if source_parent else resolved["title"])
+        child_title = str(resolved["english_title"] if source_parent else resolved["title"])
+        parent_language = (
+            "zh" if str(resolved.get("original_language") or "").casefold() in {"zh", "cn", "yue"} else "en"
+        ) if source_parent else str(resolved["primary_language"])
         backend = self.openlist()
         entries = backend.scan(path)
         plan = make_plan(
@@ -468,12 +483,13 @@ class App:
             path,
             backend.name,
             NamingPolicy(),
-            str(resolved["title"]),
+            child_title,
             int(resolved["year"]) if resolved.get("year") else None,
             True,
             tmdb_id,
-            str(resolved["primary_language"]),
+            parent_language,
             kind,
+            root_title_override=parent_title,
         )
         for operation in plan.operations:
             if operation.kind == "rename_directory" and backend.exists(operation.target):

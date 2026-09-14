@@ -63,6 +63,7 @@ def make_plan(
     tmdb_id: int | None = None,
     primary_language: str | None = None,
     media_kind: str | None = None,
+    root_title_override: str | None = None,
 ) -> RenamePlan:
     if rename_root_folder is None:
         rename_root_folder = tmdb_id is not None
@@ -125,7 +126,7 @@ def make_plan(
         elif not title_override or not year_override or not tmdb_id:
             plan.conflicts.append("Root folder rename requires a verified title, year, and TMDB ID")
         else:
-            folder_name = build_root_folder_name(title_override, year_override, tmdb_id, primary_language)
+            folder_name = build_root_folder_name(root_title_override or title_override, year_override, tmdb_id, primary_language)
             target_root = str(root_path.parent / folder_name)
             if target_root != str(root_path):
                 plan.operations.append(

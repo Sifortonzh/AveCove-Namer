@@ -91,6 +91,25 @@ class PlannerTests(unittest.TestCase):
         self.assertIn("/TV/Modern Family (2009) {tmdb=1421}", targets)
         self.assertFalse(any("Season 01" in target for target in targets))
 
+    def test_source_parent_title_can_differ_from_english_episode_title(self):
+        root = "/TV/进击的巨人"
+        entries = [Entry(f"{root}/第一季/进击的巨人.S01E01.1080p.mkv")]
+        plan = make_plan(
+            entries,
+            root,
+            "openlist",
+            NamingPolicy(),
+            "Attack on Titan",
+            2013,
+            tmdb_id=1429,
+            primary_language="ja",
+            media_kind="tv",
+            root_title_override="進撃の巨人",
+        )
+        targets = [operation.target for operation in plan.operations]
+        self.assertIn(f"{root}/第一季/Attack.on.Titan.2013.S01E01.1080p.mkv", targets)
+        self.assertIn("/TV/進撃の巨人 (2013) {tmdb=1429}", targets)
+
 
 if __name__ == "__main__":
     unittest.main()

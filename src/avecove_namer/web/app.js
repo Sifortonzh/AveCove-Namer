@@ -110,9 +110,13 @@ function renderSearch(results, kind) {
   target.className = 'result-space search-list';
   target.innerHTML = results.map(item => `<article class="search-item">
     <div><h3>${escapeHtml(item.title || item.original_title || '未命名')}</h3><p>${escapeHtml(item.original_title || '')}${item.year ? ` · ${item.year}` : ''} · ${escapeHtml(item.language || '未知语言')} · <span class="id-tag">TMDb ${item.id}</span></p>${item.recommended_name ? `<div class="copy-name"><code>${escapeHtml(item.recommended_name)}</code><button class="mini-button copy-name-button" data-name="${escapeHtml(item.recommended_name)}">复制名称</button></div>` : ''}</div>
-    ${kind === 'tv' ? `<button class="mini-button source-button" data-id="${item.id}">源语言单集</button>` : ''}
+    <div class="actions"><button class="mini-button copy-id-button" data-id="${item.id}">复制 TMDb ID</button>${kind === 'tv' ? `<button class="mini-button source-button" data-id="${item.id}">源语言单集</button>` : ''}</div>
   </article>`).join('');
   $$('.source-button').forEach(button => button.addEventListener('click', () => loadSource(button.dataset.id)));
+  $$('.copy-id-button').forEach(button => button.addEventListener('click', async () => {
+    await navigator.clipboard.writeText(button.dataset.id);
+    toast('TMDb ID 已复制');
+  }));
   $$('.copy-name-button').forEach(button => button.addEventListener('click', async () => {
     await navigator.clipboard.writeText(button.dataset.name);
     toast('规范名称已复制');
@@ -154,7 +158,7 @@ $('#namer-form').addEventListener('submit', async event => {
   const target = $('#namer-result');
   loading(target, '正在读取目录并调用 TMDb 识别');
   try {
-    const data = await api('/api/namer/identify', {path:$('#namer-path').value, tmdb_id:$('#namer-id').value, kind:$('#namer-kind').value, title_style:$('#namer-style').value});
+    const data = await api('/api/namer/identify', {path:$('#namer-path').value, tmdb_id:$('#namer-id').value, kind:$('#namer-kind').value, title_style:$('#namer-style').value, source_parent:$('#namer-source-parent').checked});
     renderIdentification(data);
   } catch (error) { fail(target, error); }
 });
@@ -178,7 +182,7 @@ function renderIdentification(data) {
   const target = $('#namer-result');
   const confidence = Math.round((data.score || 0) * 100);
   target.className = 'result-space match-card';
-  target.innerHTML = `<div class="match-mark">✓</div><div class="match-copy"><span class="eyebrow">TMDb MATCH</span><h3>${escapeHtml(data.resolved.title)}</h3><p>${data.resolved.year || '年份未知'} · TMDb ${data.tmdb_id} · 源语言 ${escapeHtml(data.resolved.original_language || '未知')}</p><div class="copy-name"><code>${escapeHtml(data.recommended_name)}</code><button class="mini-button" id="copy-match-name">复制名称</button></div><small>${escapeHtml(data.reason)}${confidence ? ` · 置信度 ${confidence}%` : ''}</small></div><div class="match-actions"><button class="secondary" id="retry-identify">重新识别</button><button class="primary" id="confirm-match">信息正确，生成预览</button></div>`;
+  target.innerHTML = `<div class="match-mark">✓</div><div class="match-copy"><span class="eyebrow">TMDb MATCH</span><h3>${escapeHtml(data.resolved.title)}</h3><p>${data.resolved.year || '年份未知'} · TMDb ${data.tmdb_id} · 源语言 ${escapeHtml(data.resolved.original_language || '未知')}</p><div class="copy-name"><code>${escapeHtml(data.recommended_name)}</code><button class="mini-button" id="copy-match-name">复制名称</button></div><small>${data.source_parent ? `父目录：${escapeHtml(data.parent_title)} · 子文件：${escapeHtml(data.child_title)} · ` : ''}${escapeHtml(data.reason)}${confidence ? ` · 置信度 ${confidence}%` : ''}</small></div><div class="match-actions"><button class="secondary" id="retry-identify">重新识别</button><button class="primary" id="confirm-match">信息正确，生成预览</button></div>`;
   $('#copy-match-name').addEventListener('click', async () => { await navigator.clipboard.writeText(data.recommended_name); toast('规范名称已复制'); });
   $('#retry-identify').addEventListener('click', () => $('#namer-path').focus());
   $('#confirm-match').addEventListener('click', () => createNamerPlan(data.tmdb_id));
@@ -188,7 +192,7 @@ async function createNamerPlan(tmdbId) {
   const target = $('#namer-result');
   loading(target, '正在生成只读改名预览');
   try {
-    const data = await api('/api/namer/plan', {path:$('#namer-path').value, tmdb_id:tmdbId, kind:$('#namer-kind').value, title_style:$('#namer-style').value});
+    const data = await api('/api/namer/plan', {path:$('#namer-path').value, tmdb_id:tmdbId, kind:$('#namer-kind').value, title_style:$('#namer-style').value, source_parent:$('#namer-source-parent').checked});
     renderPlan(data);
   } catch (error) { fail(target, error); }
 }

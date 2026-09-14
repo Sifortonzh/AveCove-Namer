@@ -13,7 +13,7 @@
       document.documentElement.dataset.scene = hour < 5 || hour >= 21 ? 'night' : hour < 11 ? 'morning' : hour < 17 ? 'day' : 'evening';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=guided-3">
+  <link rel="stylesheet" href="styles.css?v=guided-4">
 </head>
 <body>
   <div class="shell">
@@ -88,6 +88,7 @@
           <label><span>标题方式</span><select id="namer-style"><option value="auto">自动</option><option value="original">原名</option><option value="english">英文</option><option value="chinese">中文</option><option value="bilingual">双语</option></select></label>
           <details class="advanced-id"><summary>高级</summary><label><span>手动 TMDb ID（可选）</span><input id="namer-id" inputmode="numeric" placeholder="自动识别失败时填写"></label></details>
           <button class="primary align-end" type="submit">自动识别</button>
+          <label class="check-field source-parent-option"><input id="namer-source-parent" type="checkbox"><span>父目录使用 TMDb 源数据名称（子文件仍使用英文名称）</span></label>
         </form>
         <div id="namer-result" class="result-space empty-state"><span class="empty-icon">✦</span><p>输入具体作品路径，先识别再预览</p></div>
       </section>
@@ -130,6 +131,6 @@
     </main>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=guided-6" defer></script>
+  <script src="app.js?v=guided-7" defer></script>
 </body>
 </html>
