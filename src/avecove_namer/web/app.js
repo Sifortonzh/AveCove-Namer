@@ -51,7 +51,7 @@ function switchView(name) {
   $('#page-title').textContent = titles[name];
   $('.sidebar').classList.remove('open');
   location.hash = name;
-  if (name === 'detective') loadDetective();
+  if (name === 'detective') { loadDetective(); loadAutomationStatus(); }
 }
 
 $$('.nav-item').forEach(item => item.addEventListener('click', () => switchView(item.dataset.view)));
@@ -254,6 +254,43 @@ function statusLabel(status) {
 }
 
 $('#reload-detective').addEventListener('click', loadDetective);
+$('#automation-toggle').addEventListener('click', toggleAutomation);
+
+async function loadAutomationStatus() {
+  const button = $('#automation-toggle');
+  button.disabled = true;
+  try {
+    const data = await api('/api/automation');
+    button.dataset.enabled = String(data.enabled);
+    button.textContent = data.enabled ? '自动扫描：已开启（点击关闭）' : '自动扫描：已关闭（点击开启）';
+    button.classList.toggle('automation-on', data.enabled);
+  } catch (error) {
+    button.textContent = '自动扫描：状态读取失败';
+    toast(error.message || String(error), true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function toggleAutomation() {
+  const button = $('#automation-toggle');
+  const enabled = button.dataset.enabled === 'true';
+  button.disabled = true;
+  button.textContent = enabled ? '正在关闭自动扫描…' : '正在开启自动扫描…';
+  try {
+    const data = await api('/api/automation', {enabled: !enabled});
+    button.dataset.enabled = String(data.enabled);
+    button.textContent = data.enabled ? '自动扫描：已开启（点击关闭）' : '自动扫描：已关闭（点击开启）';
+    button.classList.toggle('automation-on', data.enabled);
+    toast(data.enabled ? '自动扫描已开启，将按计划执行' : '自动扫描已关闭');
+  } catch (error) {
+    toast(error.message || String(error), true);
+    await loadAutomationStatus();
+  } finally {
+    button.disabled = false;
+  }
+}
+
 $('#emby-form').addEventListener('submit', async event => {
   event.preventDefault();
   const target = $('#emby-result');

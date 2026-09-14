@@ -69,6 +69,13 @@ CLOUD_LIBRARY_ROOTS = {
     ),
 }
 
+AUTOMATION_TIMERS = (
+    "avecove-namer-detective-115.timer",
+    "avecove-namer-detective-123.timer",
+    "avecove-namer-detective-baidu.timer",
+    "avecove-namer-detective-guangya.timer",
+)
+
 
 def normalized_media_name(value: object) -> str:
     text = re.sub(r"\{\s*tmdb\s*=\s*\d+\s*\}", "", str(value or ""), flags=re.IGNORECASE)
@@ -262,6 +269,33 @@ class App:
             "message": "快快观看吧！" if unique else "快快收藏吧！",
             "matches": unique[:20],
         }
+
+    def automation_status(self) -> dict[str, Any]:
+        states: dict[str, bool] = {}
+        for timer in AUTOMATION_TIMERS:
+            result = subprocess.run(
+                ["systemctl", "is-active", "--quiet", timer],
+                check=False,
+                timeout=10,
+            )
+            states[timer] = result.returncode == 0
+        return {"enabled": all(states.values()), "timers": states}
+
+    def set_automation(self, payload: dict[str, Any]) -> dict[str, Any]:
+        enabled = payload.get("enabled")
+        if not isinstance(enabled, bool):
+            raise ValueError("自动扫描状态无效")
+        action = "enable" if enabled else "disable"
+        result = subprocess.run(
+            ["systemctl", action, "--now", *AUTOMATION_TIMERS],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            raise ValueError((result.stderr or result.stdout or "无法修改自动扫描状态").strip())
+        return self.automation_status()
 
     def _emby_token(self) -> str:
         with sqlite3.connect(self.settings.emby_auth_db) as database:
@@ -685,6 +719,9 @@ def handler_factory(app: App):
                 if path == "/api/detective":
                     self.json_response(HTTPStatus.OK, app.detective())
                     return
+                if path == "/api/automation":
+                    self.json_response(HTTPStatus.OK, app.automation_status())
+                    return
                 if path.startswith("/api/watch/image/"):
                     body, content_type = app.emby_image(path.rsplit("/", 1)[-1])
                     self.binary_response(HTTPStatus.OK, body, content_type)
@@ -718,6 +755,7 @@ def handler_factory(app: App):
                     "/api/tmdb/search": app.search,
                     "/api/tmdb/source": app.source_episodes,
                     "/api/library/search": app.library_search,
+                    "/api/automation": app.set_automation,
                     "/api/namer/plan": app.create_plan,
                     "/api/namer/identify": app.identify_path,
                     "/api/namer/apply": app.apply_plan,

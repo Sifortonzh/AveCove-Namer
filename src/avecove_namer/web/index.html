@@ -13,7 +13,7 @@
       document.documentElement.dataset.scene = hour < 5 || hour >= 21 ? 'night' : hour < 11 ? 'morning' : hour < 17 ? 'day' : 'evening';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=guided-4">
+  <link rel="stylesheet" href="styles.css?v=guided-5">
 </head>
 <body>
   <div class="shell">
@@ -94,7 +94,7 @@
       </section>
 
       <section class="view" id="view-detective">
-        <div class="section-head"><div><h2>识别记录</h2><p>Namer 最近一次自动检测的结果与待审核项目。</p></div><button class="secondary" id="reload-detective">刷新记录</button></div>
+        <div class="section-head"><div><h2>识别记录</h2><p>Namer 最近一次自动检测的结果与待审核项目。</p></div><div class="section-actions"><button class="secondary automation-toggle" id="automation-toggle" type="button" disabled>自动扫描：读取中</button><button class="secondary" id="reload-detective">刷新记录</button></div></div>
         <div id="detective-summary" class="stats"></div>
         <div id="detective-result" class="result-space empty-state"><span class="empty-icon">◉</span><p>正在读取记录</p></div>
       </section>
@@ -131,6 +131,6 @@
     </main>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=guided-7" defer></script>
+  <script src="app.js?v=guided-8" defer></script>
 </body>
 </html>

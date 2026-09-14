@@ -88,6 +88,9 @@ main { min-width: 0; padding: 0 clamp(22px, 5vw, 72px) 70px; background: radial-
 .section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 26px; }
 .section-head h2 { margin: 0 0 7px; font-size: clamp(25px, 3vw, 34px); letter-spacing: -.045em; }
 .section-head p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.6; }
+.section-actions { display:flex; align-items:center; gap:9px; }
+.automation-toggle { min-width:190px; }
+.automation-toggle.automation-on { color:var(--good); border-color:color-mix(in srgb,var(--good) 45%,var(--line)); background:color-mix(in srgb,var(--good) 8%,var(--surface-2)); }
 .segmented { display: flex; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--input-bg); }
 .segmented button { min-width: 64px; padding: 8px 12px; color: var(--muted); border: 0; border-radius: 8px; background: transparent; font-size: 13px; }
 .segmented button.active { color: var(--text); background: var(--surface-2); box-shadow: 0 2px 8px rgb(31 48 61 / .12); }
@@ -213,6 +216,8 @@ pre { max-height: 320px; overflow: auto; padding: 14px; color: var(--code-text);
   .topbar .date { display: none; }
   .view { padding-top: 28px; }
   .section-head { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .section-actions { width:100%; flex-wrap:wrap; }
+  .section-actions button { flex:1; }
   .command-bar, .form-card { display: grid; grid-template-columns: 1fr; padding: 14px; }
   .year-field { width: 100%; }
   .topbar .home-link { margin-left:auto; }
