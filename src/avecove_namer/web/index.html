@@ -60,7 +60,7 @@
 
       <section class="view active" id="view-namer">
         <div class="section-head"><div><h2>Namer 改名</h2><p>输入路径后自动识别 TMDb；确认作品信息，再生成只读预览。</p></div><span class="safe-badge">识别阶段不改文件</span></div>
-        <div class="path-presets" aria-label="常用路径">
+        <div class="path-presets namer-presets" aria-label="Namer 常用路径">
           <button type="button" data-kind="tv" data-path="/115/00剧/01美/">115 · 01美</button>
           <button type="button" data-kind="tv" data-path="/115/00剧/01中/">115 · 01中</button>
           <button type="button" data-kind="movie" data-path="/115/00影/01国/">115 电影 · 01国</button>
@@ -88,6 +88,16 @@
 
       <section class="view" id="view-emby">
         <div class="section-head"><div><h2>Emby 定向刷新</h2><p>只同步指定云盘路径，并刷新对应的 Emby 媒体库。</p></div></div>
+        <div class="path-presets emby-presets" aria-label="Emby 刷新常用路径">
+          <button type="button" data-path="/115/00剧/01美/">115 · 01美</button>
+          <button type="button" data-path="/115/00剧/01中/">115 · 01中</button>
+          <button type="button" data-path="/115/00影/01国/">115 电影 · 01国</button>
+          <button type="button" data-path="/115/00影/01外/">115 电影 · 01外</button>
+          <button type="button" data-path="/123/00剧/01美/">123 · 01美</button>
+          <button type="button" data-path="/123/00剧/01中/">123 · 01中</button>
+          <button type="button" data-path="/GuangYa/00剧/01美/">光鸭 · 01美</button>
+          <button type="button" data-path="/Baidu/00剧/01美/">百度 · 01美</button>
+        </div>
         <form class="command-bar" id="emby-form">
           <label class="grow"><span>OpenList 媒体路径</span><input id="emby-path" placeholder="/GuangYa/00剧/01美/Game of Thrones (2011)" required></label>
           <button class="primary" type="submit">开始刷新</button>
@@ -98,6 +108,6 @@
     </main>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=guided-3" defer></script>
+  <script src="app.js?v=guided-4" defer></script>
 </body>
 </html>

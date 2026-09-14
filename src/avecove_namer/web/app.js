@@ -132,10 +132,17 @@ $('#namer-form').addEventListener('submit', async event => {
   } catch (error) { fail(target, error); }
 });
 
-$$('.path-presets button').forEach(button => button.addEventListener('click', () => {
+$$('.namer-presets button').forEach(button => button.addEventListener('click', () => {
   const input = $('#namer-path');
   input.value = button.dataset.path;
   $('#namer-kind').value = button.dataset.kind || 'tv';
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}));
+
+$$('.emby-presets button').forEach(button => button.addEventListener('click', () => {
+  const input = $('#emby-path');
+  input.value = button.dataset.path;
   input.focus();
   input.setSelectionRange(input.value.length, input.value.length);
 }));
