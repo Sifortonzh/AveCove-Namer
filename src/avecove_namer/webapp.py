@@ -10,10 +10,12 @@ import mimetypes
 import os
 from pathlib import Path, PurePosixPath
 import random
+import re
 import secrets
 import sqlite3
 import subprocess
 import threading
+import time
 from typing import Any
 import urllib.error
 import urllib.parse
@@ -51,6 +53,34 @@ BROAD_NAMER_PATHS = {
     "/Baidu/00影/01国",
     "/Baidu/00影/01外",
 }
+
+CLOUD_LIBRARY_ROOTS = {
+    "tv": (
+        "/115/00剧/01中", "/115/00剧/01日", "/115/00剧/01韩", "/115/00剧/01美", "/115/00剧/01英", "/115/00剧/02其他",
+        "/123/00剧/01中", "/123/00剧/01日", "/123/00剧/01韩", "/123/00剧/01美", "/123/00剧/01英",
+        "/GuangYa/00剧/01中", "/GuangYa/00剧/01日", "/GuangYa/00剧/01韩", "/GuangYa/00剧/01美", "/GuangYa/00剧/01英",
+        "/Baidu/00剧/01中", "/Baidu/00剧/01日", "/Baidu/00剧/01韩", "/Baidu/00剧/01美", "/Baidu/00剧/01英",
+        "/Quark/00剧/01中", "/Quark/00剧/01日", "/Quark/00剧/01韩", "/Quark/00剧/01美", "/Quark/00剧/01英",
+    ),
+    "movie": (
+        "/115/00影/01国", "/115/00影/01外", "/123/00影/01国", "/123/00影/01外",
+        "/GuangYa/00影/01国", "/GuangYa/00影/01外", "/Baidu/00影/01国", "/Baidu/00影/01外",
+        "/Quark/00影/01国", "/Quark/00影/01外", "/Quark/00影",
+    ),
+}
+
+
+def normalized_media_name(value: object) -> str:
+    text = re.sub(r"\{\s*tmdb\s*=\s*\d+\s*\}", "", str(value or ""), flags=re.IGNORECASE)
+    text = re.sub(r"[（(](?:19|20)\d{2}[）)]", "", text)
+    return "".join(character for character in text.casefold() if character.isalnum())
+
+
+def media_name_matches(name: object, aliases: set[str]) -> bool:
+    candidate = normalized_media_name(name)
+    if not candidate:
+        return False
+    return any(len(alias) >= 2 and (alias in candidate or candidate in alias) for alias in aliases)
 
 
 def recommended_folder_name(item: dict[str, object]) -> str:
@@ -100,6 +130,7 @@ class Settings:
     work_root: Path
     detective_summary: Path
     refresh_worker: Path
+    media_index_root: Path = Path("/opt/docker/emby/media/openlist-local-tree")
     emby_url: str = "http://127.0.0.1:8097"
     emby_auth_db: Path = Path("/opt/docker/emby/config/data/authentication.db")
     emby_username: str = "zhongyunxing"
@@ -115,6 +146,7 @@ class Settings:
             work_root=Path(os.getenv("AVECOVE_NAMER_WORK_ROOT", "/opt/docker/avecove-namer/web-jobs")),
             detective_summary=Path(os.getenv("AVECOVE_DETECTIVE_SUMMARY", "/opt/docker/avecove-namer/detective/last-summary.json")),
             refresh_worker=Path(os.getenv("AVECOVE_REFRESH_WORKER", "/opt/emby-strm/refresh-one-source-openlist-lowload.py")),
+            media_index_root=Path(os.getenv("AVECOVE_MEDIA_INDEX_ROOT", "/opt/docker/emby/media/openlist-local-tree")),
             emby_url=os.getenv("AVECOVE_EMBY_URL", "http://127.0.0.1:8097"),
             emby_auth_db=Path(os.getenv("AVECOVE_EMBY_AUTH_DB", "/opt/docker/emby/config/data/authentication.db")),
             emby_username=os.getenv("AVECOVE_EMBY_USERNAME", "zhongyunxing"),
@@ -127,6 +159,8 @@ class App:
         self.settings.work_root.mkdir(parents=True, exist_ok=True)
         self._jobs: dict[str, dict[str, Any]] = {}
         self._jobs_lock = threading.Lock()
+        self._cloud_cache: dict[str, tuple[float, list[dict[str, object]]]] = {}
+        self._cloud_cache_lock = threading.Lock()
 
     def tmdb(self) -> TMDBClient:
         return TMDBClient(read_secret(self.settings.tmdb_token_file))
@@ -145,6 +179,89 @@ class App:
         for item in results:
             item["recommended_name"] = recommended_folder_name(item)
         return {"results": results}
+
+    def _availability_aliases(self, query: str, kind: str) -> set[str]:
+        aliases = {normalized_media_name(query)}
+        try:
+            for item in self.tmdb().search(query, kind, None, "zh-CN")[:3]:
+                aliases.add(normalized_media_name(item.get("title")))
+                aliases.add(normalized_media_name(item.get("original_title")))
+        except TMDBError:
+            pass
+        return {alias for alias in aliases if alias}
+
+    def _local_library_matches(self, aliases: set[str]) -> list[str]:
+        root = self.settings.media_index_root
+        if not root.is_dir():
+            return []
+        matches: list[str] = []
+        for current, directories, filenames in os.walk(root):
+            relative = Path(current).relative_to(root)
+            for directory in directories:
+                if media_name_matches(directory, aliases):
+                    matches.append("/" + str(relative / directory))
+                    if len(matches) >= 20:
+                        return list(dict.fromkeys(matches))
+            if len(relative.parts) >= 3:
+                for filename in filenames:
+                    if filename.casefold().endswith(".strm") and media_name_matches(Path(filename).stem, aliases):
+                        matches.append("/" + str(relative))
+                        if len(matches) >= 20:
+                            return list(dict.fromkeys(matches))
+        return list(dict.fromkeys(matches))
+
+    def _cloud_directories(self, backend: OpenListBackend, root: str) -> list[dict[str, object]]:
+        now = time.monotonic()
+        with self._cloud_cache_lock:
+            cached = self._cloud_cache.get(root)
+            if cached and now - cached[0] < 300:
+                return cached[1]
+        directories = backend.list_directories(root, refresh=False)
+        with self._cloud_cache_lock:
+            self._cloud_cache[root] = (now, directories)
+        return directories
+
+    def library_search(self, payload: dict[str, Any]) -> dict[str, Any]:
+        query = str(payload.get("query") or "").strip()
+        kind = str(payload.get("kind") or "tv")
+        if not query:
+            raise ValueError("请输入要检查的资源名称")
+        if kind not in CLOUD_LIBRARY_ROOTS:
+            raise ValueError("媒体类型无效")
+        aliases = self._availability_aliases(query, kind)
+        backend = self.openlist()
+        matches: list[dict[str, str]] = []
+
+        # Verify local-index hits against OpenList, avoiding false positives
+        # from STRM files left behind after a cloud deletion.
+        for path in self._local_library_matches(aliases):
+            try:
+                if backend.exists(path):
+                    matches.append({"provider": PurePosixPath(path).parts[1], "path": path})
+            except BackendError:
+                continue
+
+        # New cloud folders may not have reached Emby yet, so fall back to a
+        # shallow category lookup. Cached listings keep this cheap on the host.
+        if not matches:
+            for root in CLOUD_LIBRARY_ROOTS[kind]:
+                try:
+                    directories = self._cloud_directories(backend, root)
+                except BackendError:
+                    continue
+                for item in directories:
+                    name = str(item.get("name") or "")
+                    if media_name_matches(name, aliases):
+                        path = str(PurePosixPath(root) / name)
+                        matches.append({"provider": PurePosixPath(path).parts[1], "path": path})
+
+        unique = list({item["path"]: item for item in matches}.values())
+        unique.sort(key=lambda item: (item["provider"].casefold(), item["path"].casefold()))
+        return {
+            "found": bool(unique),
+            "message": "快快观看吧！" if unique else "快快收藏吧！",
+            "matches": unique[:20],
+        }
 
     def _emby_token(self) -> str:
         with sqlite3.connect(self.settings.emby_auth_db) as database:
@@ -584,6 +701,7 @@ def handler_factory(app: App):
                 routes = {
                     "/api/tmdb/search": app.search,
                     "/api/tmdb/source": app.source_episodes,
+                    "/api/library/search": app.library_search,
                     "/api/namer/plan": app.create_plan,
                     "/api/namer/identify": app.identify_path,
                     "/api/namer/apply": app.apply_plan,

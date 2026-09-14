@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from avecove_namer.webapp import Settings, recommended_folder_name, safe_cloud_path
+from avecove_namer.webapp import Settings, media_name_matches, normalized_media_name, recommended_folder_name, safe_cloud_path
 
 
 class WebAppTests(unittest.TestCase):
@@ -39,3 +39,9 @@ class WebAppTests(unittest.TestCase):
             recommended_folder_name({"id": 123, "title": "漫长的季节", "original_title": "漫长的季节", "year": 2023, "language": "zh"}),
             "漫长的季节（2023） {tmdb=123}",
         )
+
+    def test_media_name_matching_ignores_year_tmdb_and_punctuation(self):
+        aliases = {normalized_media_name("爱乐之城"), normalized_media_name("La La Land")}
+        self.assertTrue(media_name_matches("La La Land (2016) {tmdb=313369}", aliases))
+        self.assertTrue(media_name_matches("【爱乐之城】4K.HDR.REMUX", aliases))
+        self.assertFalse(media_name_matches("Modern Family (2009)", aliases))

@@ -68,6 +68,7 @@ $('#tmdb-form').addEventListener('submit', async event => {
   const query = $('#tmdb-query').value.trim();
   const year = $('#tmdb-year').value.trim();
   if (!query) return;
+  checkLibrary(query);
   if (mediaKind === 'tv' && /^\d+$/.test(query)) return loadSource(query);
   const target = $('#tmdb-result');
   loading(target, '正在搜索 TMDb');
@@ -76,6 +77,32 @@ $('#tmdb-form').addEventListener('submit', async event => {
     renderSearch(data.results, mediaKind);
   } catch (error) { fail(target, error); }
 });
+
+$('#library-search-button').addEventListener('click', () => checkLibrary($('#tmdb-query').value.trim()));
+
+async function checkLibrary(query) {
+  const target = $('#library-search-result');
+  if (!query) {
+    target.className = 'availability-card missing';
+    target.innerHTML = '<span>收藏检查</span><strong>请先输入资源名称</strong>';
+    $('#tmdb-query').focus();
+    return;
+  }
+  target.className = 'availability-card checking';
+  target.innerHTML = '<span>正在查询</span><strong>正在轻量检查各网盘目录…</strong>';
+  try {
+    const data = await api('/api/library/search', {query, kind: mediaKind});
+    target.className = `availability-card ${data.found ? 'found' : 'missing'}`;
+    target.innerHTML = `<div><span>${data.found ? '已收藏' : '暂未收藏'}</span><strong>${escapeHtml(data.message)}</strong></div>${data.matches.length ? `<div class="availability-paths">${data.matches.map(item => `<button class="availability-path" type="button" data-path="${escapeHtml(item.path)}"><b>${escapeHtml(item.provider)}</b><small>${escapeHtml(item.path)}</small></button>`).join('')}</div>` : '<p>目前在已接入的网盘目录中没有找到匹配资源。</p>'}`;
+    $$('.availability-path').forEach(button => button.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(button.dataset.path);
+      toast('网盘路径已复制');
+    }));
+  } catch (error) {
+    target.className = 'availability-card missing';
+    target.innerHTML = `<span>查询失败</span><strong>${escapeHtml(error.message || error)}</strong>`;
+  }
+}
 
 function renderSearch(results, kind) {
   const target = $('#tmdb-result');
