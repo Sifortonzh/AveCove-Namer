@@ -23,7 +23,7 @@ import urllib.request
 from urllib.parse import parse_qs, urlparse
 
 from .backends import BackendError, OpenListBackend
-from .detective import _find_movie_tmdb_id, _find_tv_tmdb_id
+from .detective import _find_movie_tmdb_id, _find_tv_tmdb_id, infer_search_terms
 from .executor import ExecutionError, execute_plan
 from .models import RenamePlan
 from .naming import NamingPolicy
@@ -73,6 +73,13 @@ def normalized_media_name(value: object) -> str:
     text = re.sub(r"\{\s*tmdb\s*=\s*\d+\s*\}", "", str(value or ""), flags=re.IGNORECASE)
     text = re.sub(r"[（(](?:19|20)\d{2}[）)]", "", text)
     return "".join(character for character in text.casefold() if character.isalnum())
+
+
+def normalized_lookup_query(value: object) -> tuple[str, int | None]:
+    """Turn copied release/folder names into a TMDb-friendly title and year."""
+    raw = str(value or "").strip()
+    title, year = infer_search_terms(raw)
+    return (title or raw.strip(" ._-"), year)
 
 
 def media_name_matches(name: object, aliases: set[str]) -> bool:
@@ -171,21 +178,23 @@ class App:
         return OpenListBackend(self.settings.openlist_url, read_secret(self.settings.openlist_token_file))
 
     def search(self, payload: dict[str, Any]) -> dict[str, Any]:
-        query = str(payload.get("query") or "").strip()
-        if not query:
+        raw_query = str(payload.get("query") or "").strip()
+        if not raw_query:
             raise ValueError("请输入剧名或电影名")
+        query, inferred_year = normalized_lookup_query(raw_query)
         kind = str(payload.get("kind") or "tv")
         year_value = payload.get("year")
-        year = int(year_value) if year_value else None
+        year = int(year_value) if year_value else inferred_year
         results = self.tmdb().search(query, kind, year, "zh-CN")
         for item in results:
             item["recommended_name"] = recommended_folder_name(item)
         return {"results": results}
 
     def _availability_aliases(self, query: str, kind: str) -> set[str]:
-        aliases = {normalized_media_name(query)}
+        clean_query, inferred_year = normalized_lookup_query(query)
+        aliases = {normalized_media_name(query), normalized_media_name(clean_query)}
         try:
-            for item in self.tmdb().search(query, kind, None, "zh-CN")[:3]:
+            for item in self.tmdb().search(clean_query, kind, inferred_year, "zh-CN")[:3]:
                 aliases.add(normalized_media_name(item.get("title")))
                 aliases.add(normalized_media_name(item.get("original_title")))
         except TMDBError:
@@ -430,10 +439,11 @@ class App:
                 }
             )
             return data
-        results = client.search(value, "tv", None, "zh-CN")
+        query, inferred_year = normalized_lookup_query(value)
+        results = client.search(query, "tv", inferred_year, "zh-CN")
         if not results:
             raise ValueError("没有找到该剧")
-        exact = [item for item in results if value.casefold() in {str(item.get("title") or "").casefold(), str(item.get("original_title") or "").casefold()}]
+        exact = [item for item in results if query.casefold() in {str(item.get("title") or "").casefold(), str(item.get("original_title") or "").casefold()}]
         if len(exact) == 1:
             return self.source_episodes({"tmdb_id": int(exact[0]["id"])})
         return {"selection_required": True, "results": results}
@@ -453,10 +463,19 @@ class App:
         reason = "手动指定 TMDb ID"
         query_title = None
         query_year = None
+        source_available = True
+        warning = None
         if supplied_id:
             tmdb_id = supplied_id
         else:
-            entries = self.openlist().scan(path, refresh=True)
+            try:
+                entries = self.openlist().scan(path, refresh=True)
+            except BackendError:
+                # Identification only needs the copied folder name.  OpenList
+                # is still required later when a rename plan is executed.
+                entries = []
+                source_available = False
+                warning = "OpenList 尚未同步该目录；已直接根据复制的 115 名称完成识别。生成改名预览前需等 OpenList 可访问该目录。"
             finder = _find_tv_tmdb_id if kind == "tv" else _find_movie_tmdb_id
             tmdb_id, score, reason, query_title, query_year = finder(client, PurePosixPath(path).name, entries)
             if not tmdb_id:
@@ -488,6 +507,8 @@ class App:
             "parent_title": parent_title,
             "child_title": child_title,
             "source_parent": source_parent,
+            "source_available": source_available,
+            "warning": warning,
             "resolved": resolved,
         }
         self._append_manual_event(
@@ -519,7 +540,10 @@ class App:
             "zh" if str(resolved.get("original_language") or "").casefold() in {"zh", "cn", "yue"} else "en"
         ) if source_parent else str(resolved["primary_language"])
         backend = self.openlist()
-        entries = backend.scan(path)
+        try:
+            entries = backend.scan(path, refresh=True)
+        except BackendError as exc:
+            raise ValueError("名称已可识别，但 OpenList 尚未同步到该目录，暂时无法执行改名。请先在 OpenList 刷新该存储后再生成预览。") from exc
         plan = make_plan(
             entries,
             path,

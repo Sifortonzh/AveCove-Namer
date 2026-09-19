@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from avecove_namer.webapp import App, Settings, media_name_matches, normalized_media_name, recommended_folder_name, safe_cloud_path
+from avecove_namer.webapp import App, Settings, media_name_matches, normalized_lookup_query, normalized_media_name, recommended_folder_name, safe_cloud_path
 
 
 class WebAppTests(unittest.TestCase):
@@ -45,6 +45,16 @@ class WebAppTests(unittest.TestCase):
         self.assertTrue(media_name_matches("La La Land (2016) {tmdb=313369}", aliases))
         self.assertTrue(media_name_matches("【爱乐之城】4K.HDR.REMUX", aliases))
         self.assertFalse(media_name_matches("Modern Family (2009)", aliases))
+
+    def test_lookup_query_accepts_dotted_release_names(self):
+        self.assertEqual(
+            normalized_lookup_query("Teenage.Sex.And.Death.At.Camp.Miasma."),
+            ("Teenage Sex And Death At Camp Miasma", None),
+        )
+        self.assertEqual(
+            normalized_lookup_query("假面女郎 2023 WEB 4K 杜比视界"),
+            ("假面女郎", 2023),
+        )
 
     def test_detective_returns_latest_twenty_manual_records(self):
         with tempfile.TemporaryDirectory() as directory:
