@@ -186,9 +186,14 @@ class App:
         year_value = payload.get("year")
         year = int(year_value) if year_value else inferred_year
         results = self.tmdb().search(query, kind, year, "zh-CN")
+        resolved_kind = kind
+        if not results:
+            resolved_kind = "movie" if kind == "tv" else "tv"
+            results = self.tmdb().search(query, resolved_kind, year, "zh-CN")
         for item in results:
+            item["kind"] = resolved_kind
             item["recommended_name"] = recommended_folder_name(item)
-        return {"results": results}
+        return {"results": results, "resolved_kind": resolved_kind}
 
     def _availability_aliases(self, query: str, kind: str) -> set[str]:
         clean_query, inferred_year = normalized_lookup_query(query)

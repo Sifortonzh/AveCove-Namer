@@ -97,7 +97,7 @@ $('#tmdb-form').addEventListener('submit', async event => {
   loading(target, '正在搜索 TMDb');
   try {
     const data = await api('/api/tmdb/search', {query, year, kind: mediaKind});
-    renderSearch(data.results, mediaKind);
+    renderSearch(data.results, data.resolved_kind || mediaKind);
   } catch (error) { fail(target, error); }
 });
 
@@ -132,7 +132,7 @@ function renderSearch(results, kind) {
   if (!results.length) return fail(target, new Error('没有找到匹配结果'));
   target.className = 'result-space search-list';
   target.innerHTML = results.map(item => `<article class="search-item">
-    <div><h3>${escapeHtml(item.title || item.original_title || '未命名')}</h3><p>${escapeHtml(item.original_title || '')}${item.year ? ` · ${item.year}` : ''} · ${escapeHtml(item.language || '未知语言')} · <span class="id-tag">TMDb ${item.id}</span></p>${item.recommended_name ? `<div class="copy-name"><code>${escapeHtml(item.recommended_name)}</code></div>` : ''}</div>
+    <div><h3>${escapeHtml(item.title || item.original_title || '未命名')}</h3><p>${item.kind === 'movie' ? '电影' : '剧集'} · ${escapeHtml(item.original_title || '')}${item.year ? ` · ${item.year}` : ''} · ${escapeHtml(item.language || '未知语言')} · <span class="id-tag">TMDb ${item.id}</span></p>${item.recommended_name ? `<div class="copy-name"><code>${escapeHtml(item.recommended_name)}</code></div>` : ''}</div>
     <div class="actions"><button class="mini-button copy-title-button" data-title="${escapeHtml(item.title || item.original_title || '')}">仅复制剧名</button><button class="mini-button copy-folder-button" data-name="${escapeHtml(item.recommended_name || '')}">复制文件夹名</button><button class="mini-button copy-id-button" data-id="${item.id}">复制 TMDb 号</button>${kind === 'tv' ? `<button class="mini-button source-button" data-id="${item.id}">源语言单集</button>` : ''}</div>
   </article>`).join('');
   $$('.source-button').forEach(button => button.addEventListener('click', () => loadSource(button.dataset.id)));
