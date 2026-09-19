@@ -100,6 +100,12 @@ main { min-width: 0; padding: 0 clamp(22px, 5vw, 72px) 70px; background: radial-
 .path-presets { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 12px; }
 .path-presets button { padding:7px 11px; color:var(--muted); border:1px solid var(--line); border-radius:999px; background:var(--surface); font-size:12px; }
 .path-presets button:hover { color:var(--text); border-color:var(--accent); }
+.grouped-presets { display:grid; gap:8px; padding:10px; border:1px solid var(--line-soft); border-radius:var(--radius); background:var(--surface); }
+.preset-provider { display:grid; grid-template-columns:72px minmax(0,1fr); align-items:start; gap:12px; padding:9px 10px; border-radius:11px; background:var(--surface-2); }
+.preset-provider > strong { padding-top:7px; color:var(--text); font-size:13px; }
+.preset-directory-list { display:flex; flex-wrap:wrap; align-items:center; gap:7px; }
+.preset-type { padding:0 2px; color:var(--accent-2); font-size:10px; font-weight:750; letter-spacing:.08em; }
+.preset-directory-list .preset-type:not(:first-child) { margin-left:7px; }
 .advanced-id { min-width:150px; padding:0 4px 1px; }
 .advanced-id summary { margin-bottom:8px; color:var(--muted); cursor:pointer; font-size:12px; }
 .source-parent-option { grid-column:1 / -1; }
@@ -176,6 +182,8 @@ td.overview { min-width: 380px; color: #b0b6c1; }
 .season-group summary { display:flex; justify-content:space-between; padding:13px 15px; cursor:pointer; background:var(--surface-2); font-size:13px; font-weight:700; }
 .season-group summary small { color:var(--muted); font-weight:500; }
 .season-group .table-wrap { max-height:48vh; }
+.episode-copy { display:grid; gap:8px; }
+.episode-copy .mini-button { width:max-content; padding:5px 8px; color:var(--accent-2); font-size:10px; }
 .provider-tag { display:inline-block; margin-right:7px; padding:2px 5px; color:var(--accent-2); border-radius:5px; background:rgb(228 75 95 / .08); font-size:10px; text-transform:uppercase; }
 .id-tag { color: #aab0bb; font-variant-numeric: tabular-nums; }
 .operation { display: grid; gap: 4px; }
@@ -191,8 +199,12 @@ td.overview { min-width: 380px; color: #b0b6c1; }
 .stat span { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
 .status { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 999px; font-size: 11px; white-space: nowrap; background: #202530; color: #b7bec9; }
 .status.review, .status.planned { color: var(--warn); background: rgb(241 183 90 / .1); }
-.status.applied, .status.compliant, .status.completed { color: var(--good); background: rgb(86 197 150 / .1); }
+.status.applied, .status.compliant, .status.completed, .status.identified { color: var(--good); background: rgb(86 197 150 / .1); }
 .status.scan_error, .status.failed { color: var(--bad); background: rgb(239 104 118 / .1); }
+.history-section { margin:0 0 24px; padding:16px; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); }
+.history-heading { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.history-heading strong { font-size:14px; }
+.history-heading span, .history-empty { color:var(--muted); font-size:12px; }
 .job-card { padding: 22px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
 .job-card h3 { margin: 0 0 8px; font-size: 18px; }
 .job-card p { color: var(--muted); line-height: 1.6; overflow-wrap: anywhere; }
@@ -234,5 +246,8 @@ pre { max-height: 320px; overflow: auto; padding: 14px; color: var(--code-text);
   .availability-card { align-items:stretch; flex-direction:column; }
   .availability-paths { justify-content:stretch; }
   .availability-path { width:100%; max-width:none; }
+  .preset-provider { grid-template-columns:1fr; gap:5px; }
+  .preset-provider > strong { padding-top:0; }
+  .preset-directory-list .preset-type:not(:first-child) { width:100%; margin:5px 0 0; }
   td.overview { min-width: 270px; }
 }

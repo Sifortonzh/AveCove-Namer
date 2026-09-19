@@ -4,6 +4,14 @@ const titles = { tmdb: 'TMDb 查询', namer: 'Namer', detective: '识别记录',
 let mediaKind = 'tv';
 let lastSourceData = null;
 const basePath = location.pathname.startsWith('/media-tools') ? '/media-tools' : '';
+const mediaPathGroups = [
+  {label:'115', root:'115'},
+  {label:'光鸭', root:'GuangYa'},
+  {label:'123', root:'123'},
+  {label:'百度', root:'Baidu'},
+];
+const tvDirectories = ['01美', '01中', '01韩', '01日', '01台', '01英'];
+const movieDirectories = ['01国', '01外'];
 
 function applyScene() {
   const hour = new Date().getHours();
@@ -44,6 +52,21 @@ function fail(target, error) {
   target.innerHTML = `<span class="empty-icon">!</span><p>${escapeHtml(error.message || error)}</p>`;
   toast(error.message || String(error), true);
 }
+
+function presetMarkup() {
+  return mediaPathGroups.map(provider => `<section class="preset-provider">
+    <strong>${provider.label}</strong>
+    <div class="preset-directory-list">
+      <span class="preset-type">剧集</span>
+      ${tvDirectories.map(name => `<button type="button" data-kind="tv" data-path="/${provider.root}/00剧/${name}/">${name}</button>`).join('')}
+      <span class="preset-type">电影</span>
+      ${movieDirectories.map(name => `<button type="button" data-kind="movie" data-path="/${provider.root}/00影/${name}/">${name}</button>`).join('')}
+    </div>
+  </section>`).join('');
+}
+
+$('#namer-presets').innerHTML = presetMarkup();
+$('#emby-presets').innerHTML = presetMarkup();
 
 function switchView(name) {
   $$('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.view === name));
@@ -109,17 +132,21 @@ function renderSearch(results, kind) {
   if (!results.length) return fail(target, new Error('没有找到匹配结果'));
   target.className = 'result-space search-list';
   target.innerHTML = results.map(item => `<article class="search-item">
-    <div><h3>${escapeHtml(item.title || item.original_title || '未命名')}</h3><p>${escapeHtml(item.original_title || '')}${item.year ? ` · ${item.year}` : ''} · ${escapeHtml(item.language || '未知语言')} · <span class="id-tag">TMDb ${item.id}</span></p>${item.recommended_name ? `<div class="copy-name"><code>${escapeHtml(item.recommended_name)}</code><button class="mini-button copy-name-button" data-name="${escapeHtml(item.recommended_name)}">复制名称</button></div>` : ''}</div>
-    <div class="actions"><button class="mini-button copy-id-button" data-id="${item.id}">复制 TMDb ID</button>${kind === 'tv' ? `<button class="mini-button source-button" data-id="${item.id}">源语言单集</button>` : ''}</div>
+    <div><h3>${escapeHtml(item.title || item.original_title || '未命名')}</h3><p>${escapeHtml(item.original_title || '')}${item.year ? ` · ${item.year}` : ''} · ${escapeHtml(item.language || '未知语言')} · <span class="id-tag">TMDb ${item.id}</span></p>${item.recommended_name ? `<div class="copy-name"><code>${escapeHtml(item.recommended_name)}</code></div>` : ''}</div>
+    <div class="actions"><button class="mini-button copy-title-button" data-title="${escapeHtml(item.title || item.original_title || '')}">仅复制剧名</button><button class="mini-button copy-folder-button" data-name="${escapeHtml(item.recommended_name || '')}">复制文件夹名</button><button class="mini-button copy-id-button" data-id="${item.id}">复制 TMDb 号</button>${kind === 'tv' ? `<button class="mini-button source-button" data-id="${item.id}">源语言单集</button>` : ''}</div>
   </article>`).join('');
   $$('.source-button').forEach(button => button.addEventListener('click', () => loadSource(button.dataset.id)));
   $$('.copy-id-button').forEach(button => button.addEventListener('click', async () => {
     await navigator.clipboard.writeText(button.dataset.id);
     toast('TMDb ID 已复制');
   }));
-  $$('.copy-name-button').forEach(button => button.addEventListener('click', async () => {
+  $$('.copy-title-button').forEach(button => button.addEventListener('click', async () => {
+    await navigator.clipboard.writeText(button.dataset.title);
+    toast('剧名已复制');
+  }));
+  $$('.copy-folder-button').forEach(button => button.addEventListener('click', async () => {
     await navigator.clipboard.writeText(button.dataset.name);
-    toast('规范名称已复制');
+    toast('文件夹名已复制');
   }));
 }
 
@@ -134,13 +161,16 @@ async function loadSource(id) {
       return groups;
     }, {});
     target.className = 'result-space result-card';
-    target.innerHTML = `<div class="result-toolbar"><div><strong>${escapeHtml(data.original_name)}</strong><div class="meta">${data.year || '年份未知'} · TMDb ${data.tmdb_id} · ${escapeHtml(data.original_language)} · ${data.episodes.length} 集</div></div><div class="actions"><button class="mini-button" id="copy-tmdb-id">复制 ID</button><button class="mini-button" id="copy-source-name">复制名称</button><button class="mini-button" id="copy-json">复制源数据</button><button class="mini-button" id="download-json">下载</button></div></div>
+    target.innerHTML = `<div class="result-toolbar"><div><strong>${escapeHtml(data.title || data.original_name)}</strong><div class="meta">${data.year || '年份未知'} · TMDb ${data.tmdb_id} · ${escapeHtml(data.original_language)} · ${data.episodes.length} 集</div></div><div class="actions"><button class="mini-button" id="copy-source-title">仅复制剧名</button><button class="mini-button" id="copy-source-folder">复制文件夹名</button><button class="mini-button" id="copy-tmdb-id">复制 TMDb 号</button><button class="mini-button" id="copy-json">复制源数据</button><button class="mini-button" id="download-json">下载</button></div></div>
       <div class="source-name-bar"><code>${escapeHtml(data.recommended_name || '')}</code></div>
-      <div class="season-groups">${Object.entries(seasons).sort((a,b) => Number(a[0]) - Number(b[0])).map(([season, episodes], index) => `<details class="season-group" ${index === 0 ? 'open' : ''}><summary><span>Season ${String(season).padStart(2,'0')}</span><small>${episodes.length} 集</small></summary><div class="table-wrap"><table><thead><tr><th>集</th><th>源语言标题</th><th>源语言简介</th></tr></thead><tbody>${episodes.map(ep => `<tr><td class="num">E${String(ep.episode).padStart(2,'0')}</td><td>${escapeHtml(ep.name) || '—'}</td><td class="overview">${escapeHtml(ep.overview) || '—'}</td></tr>`).join('')}</tbody></table></div></details>`).join('')}</div>`;
+      <div class="season-groups">${Object.entries(seasons).sort((a,b) => Number(a[0]) - Number(b[0])).map(([season, episodes], index) => `<details class="season-group" ${index === 0 ? 'open' : ''}><summary><span>Season ${String(season).padStart(2,'0')}</span><small>${episodes.length} 集</small></summary><div class="table-wrap"><table><thead><tr><th>集</th><th>源语言标题</th><th>源语言简介</th></tr></thead><tbody>${episodes.map(ep => `<tr><td class="num">E${String(ep.episode).padStart(2,'0')}</td><td><div class="episode-copy"><span>${escapeHtml(ep.name) || '—'}</span><button class="mini-button copy-episode-name" data-copy="${escapeHtml(ep.name)}">复制单集名</button></div></td><td class="overview"><div class="episode-copy"><span>${escapeHtml(ep.overview) || '—'}</span><button class="mini-button copy-episode-overview" data-copy="${escapeHtml(ep.overview)}">复制简介</button></div></td></tr>`).join('')}</tbody></table></div></details>`).join('')}</div>`;
     $('#copy-tmdb-id').addEventListener('click', async () => { await navigator.clipboard.writeText(String(data.tmdb_id)); toast('TMDb ID 已复制'); });
-    $('#copy-source-name').addEventListener('click', async () => { await navigator.clipboard.writeText(data.recommended_name || data.original_name); toast('规范名称已复制'); });
+    $('#copy-source-title').addEventListener('click', async () => { await navigator.clipboard.writeText(data.title || data.original_name); toast('剧名已复制'); });
+    $('#copy-source-folder').addEventListener('click', async () => { await navigator.clipboard.writeText(data.recommended_name || data.original_name); toast('文件夹名已复制'); });
     $('#copy-json').addEventListener('click', async () => { await navigator.clipboard.writeText(JSON.stringify(lastSourceData, null, 2)); toast('JSON 已复制'); });
     $('#download-json').addEventListener('click', downloadSource);
+    $$('.copy-episode-name').forEach(button => button.addEventListener('click', async () => { await navigator.clipboard.writeText(button.dataset.copy); toast('单集名已复制'); }));
+    $$('.copy-episode-overview').forEach(button => button.addEventListener('click', async () => { await navigator.clipboard.writeText(button.dataset.copy); toast('单集简介已复制'); }));
   } catch (error) { fail(target, error); }
 }
 
@@ -243,14 +273,16 @@ async function loadDetective() {
     const data = await api('/api/detective');
     const keys = [['applied','已处理'],['planned','待执行'],['review','待审核'],['scan_error','异常']];
     $('#detective-summary').innerHTML = keys.map(([key,label]) => `<div class="stat"><b>${data.counts[key] || 0}</b><span>${label}</span></div>`).join('');
-    if (!data.events.length) { target.className='result-space empty-state'; target.innerHTML='<span class="empty-icon">◉</span><p>还没有检测记录</p>'; return; }
+    const manual = $('#manual-history');
+    manual.innerHTML = `<div class="history-heading"><strong>手动识别</strong><span>最近 ${data.manual_events.length} / 20 条</span></div>${data.manual_events.length ? `<div class="event-list">${data.manual_events.map(event => `<article class="event-item"><div><h3>${escapeHtml(event.path)}</h3><p><b class="provider-tag">手动 · ${escapeHtml(event.provider || 'Namer')}</b>${escapeHtml(event.reason || (event.tmdb_id ? `TMDb ${event.tmdb_id}` : ''))}</p></div><span class="status identified">${statusLabel(event.status)}</span></article>`).join('')}</div>` : '<div class="history-empty">还没有手动识别记录</div>'}`;
+    if (!data.events.length) { target.className='result-space empty-state'; target.innerHTML='<span class="empty-icon">◉</span><p>还没有自动检测记录</p>'; return; }
     target.className = 'result-space event-list';
     target.innerHTML = [...data.events].reverse().map(event => `<article class="event-item"><div><h3>${escapeHtml(event.path)}</h3><p><b class="provider-tag">${escapeHtml(event.provider || 'Namer')}</b>${escapeHtml(event.reason || (event.tmdb_id ? `TMDb ${event.tmdb_id}` : ''))}</p></div><span class="status ${escapeHtml(event.status)}">${statusLabel(event.status)}</span></article>`).join('');
   } catch (error) { fail(target, error); }
 }
 
 function statusLabel(status) {
-  return ({applied:'已处理',applied_partial:'部分处理',planned:'待执行',review:'待审核',compliant:'已规范',unchanged:'无变化',baseline:'基线',scan_error:'异常',no_media:'无媒体'})[status] || status;
+  return ({identified:'已识别',applied:'已处理',applied_partial:'部分处理',planned:'待执行',review:'待审核',compliant:'已规范',unchanged:'无变化',baseline:'基线',scan_error:'异常',no_media:'无媒体'})[status] || status;
 }
 
 $('#reload-detective').addEventListener('click', loadDetective);

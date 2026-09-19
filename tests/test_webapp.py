@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from avecove_namer.webapp import Settings, media_name_matches, normalized_media_name, recommended_folder_name, safe_cloud_path
+from avecove_namer.webapp import App, Settings, media_name_matches, normalized_media_name, recommended_folder_name, safe_cloud_path
 
 
 class WebAppTests(unittest.TestCase):
@@ -45,3 +45,25 @@ class WebAppTests(unittest.TestCase):
         self.assertTrue(media_name_matches("La La Land (2016) {tmdb=313369}", aliases))
         self.assertTrue(media_name_matches("【爱乐之城】4K.HDR.REMUX", aliases))
         self.assertFalse(media_name_matches("Modern Family (2009)", aliases))
+
+    def test_detective_returns_latest_twenty_manual_records(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            settings = Settings(
+                host="127.0.0.1",
+                port=8787,
+                openlist_url="http://127.0.0.1:5245",
+                openlist_token_file=root / "openlist.token",
+                tmdb_token_file=root / "tmdb.token",
+                work_root=root / "jobs",
+                detective_summary=root / "detective" / "last-summary.json",
+                refresh_worker=root / "refresh.py",
+                manual_history=root / "manual-history.jsonl",
+            )
+            app = App(settings)
+            for index in range(23):
+                app._append_manual_event({"path": f"/115/00剧/01美/Test {index}", "status": "identified"})
+            events = app.detective()["manual_events"]
+            self.assertEqual(len(events), 20)
+            self.assertTrue(events[0]["path"].endswith("Test 22"))
+            self.assertTrue(events[-1]["path"].endswith("Test 3"))

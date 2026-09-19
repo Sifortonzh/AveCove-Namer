@@ -34,24 +34,16 @@ from .tmdb import TMDBClient, TMDBError
 MAX_BODY = 32 * 1024
 ALLOWED_ROOTS = ("/115/", "/Baidu/", "/Quark/", "/123/", "/GuangYa/")
 BROAD_NAMER_PATHS = {
-    "/115/00剧/01美",
-    "/115/00剧/01中",
-    "/115/00影/01国",
-    "/115/00影/01外",
-    "/123/00剧/01美",
-    "/123/00剧/01中",
-    "/123/00影/01国",
-    "/123/00影/01外",
-    "/GuangYa/00剧/01美",
-    "/GuangYa/00剧/01中",
-    "/GuangYa/00剧/01英",
-    "/GuangYa/00剧/01韩",
-    "/GuangYa/00影/01国",
-    "/GuangYa/00影/01外",
-    "/Baidu/00剧/01美",
-    "/Baidu/00剧/01中",
-    "/Baidu/00影/01国",
-    "/Baidu/00影/01外",
+    *{
+        f"/{provider}/00剧/{category}"
+        for provider in ("115", "GuangYa", "123", "Baidu")
+        for category in ("01美", "01中", "01韩", "01日", "01台", "01英")
+    },
+    *{
+        f"/{provider}/00影/{category}"
+        for provider in ("115", "GuangYa", "123", "Baidu")
+        for category in ("01国", "01外")
+    },
 }
 
 CLOUD_LIBRARY_ROOTS = {
@@ -141,6 +133,7 @@ class Settings:
     emby_url: str = "http://127.0.0.1:8097"
     emby_auth_db: Path = Path("/opt/docker/emby/config/data/authentication.db")
     emby_username: str = "zhongyunxing"
+    manual_history: Path = Path("/opt/docker/avecove-namer/manual-history.jsonl")
 
     @classmethod
     def from_env(cls, host: str, port: int) -> "Settings":
@@ -157,6 +150,7 @@ class Settings:
             emby_url=os.getenv("AVECOVE_EMBY_URL", "http://127.0.0.1:8097"),
             emby_auth_db=Path(os.getenv("AVECOVE_EMBY_AUTH_DB", "/opt/docker/emby/config/data/authentication.db")),
             emby_username=os.getenv("AVECOVE_EMBY_USERNAME", "zhongyunxing"),
+            manual_history=Path(os.getenv("AVECOVE_MANUAL_HISTORY", "/opt/docker/avecove-namer/manual-history.jsonl")),
         )
 
 
@@ -168,6 +162,7 @@ class App:
         self._jobs_lock = threading.Lock()
         self._cloud_cache: dict[str, tuple[float, list[dict[str, object]]]] = {}
         self._cloud_cache_lock = threading.Lock()
+        self._manual_history_lock = threading.Lock()
 
     def tmdb(self) -> TMDBClient:
         return TMDBClient(read_secret(self.settings.tmdb_token_file))
@@ -423,6 +418,8 @@ class App:
         client = self.tmdb()
         if value.isdecimal():
             data = client.original_episode_metadata(int(value))
+            resolved = client.resolve_title(int(value), "tv", "auto")
+            data["title"] = resolved["title"]
             data["recommended_name"] = recommended_folder_name(
                 {
                     "id": data["tmdb_id"],
@@ -479,7 +476,7 @@ class App:
                 "language": parent_language,
             }
         )
-        return {
+        result = {
             "path": path,
             "kind": kind,
             "tmdb_id": tmdb_id,
@@ -493,6 +490,17 @@ class App:
             "source_parent": source_parent,
             "resolved": resolved,
         }
+        self._append_manual_event(
+            {
+                "created_at": utc_now(),
+                "provider": PurePosixPath(path).parts[1],
+                "path": path,
+                "status": "identified",
+                "tmdb_id": tmdb_id,
+                "reason": f"TMDb {tmdb_id} · {resolved['title']}",
+            }
+        )
+        return result
 
     def create_plan(self, payload: dict[str, Any]) -> dict[str, Any]:
         path = safe_cloud_path(payload.get("path"))
@@ -599,14 +607,36 @@ class App:
         with self._jobs_lock:
             self._jobs[job_id].update(update)
 
+    def _append_manual_event(self, event: dict[str, Any]) -> None:
+        self.settings.manual_history.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps(event, ensure_ascii=False) + "\n"
+        with self._manual_history_lock:
+            with self.settings.manual_history.open("a", encoding="utf-8") as stream:
+                stream.write(line)
+
+    def _manual_events(self, limit: int = 20) -> list[dict[str, Any]]:
+        if not self.settings.manual_history.is_file():
+            return []
+        with self._manual_history_lock:
+            lines = self.settings.manual_history.read_text(encoding="utf-8").splitlines()
+        events: list[dict[str, Any]] = []
+        for line in reversed(lines):
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(value, dict):
+                events.append(value)
+            if len(events) >= limit:
+                break
+        return events
+
     def detective(self) -> dict[str, Any]:
         candidates = []
         if self.settings.detective_summary.is_file():
             candidates.append(self.settings.detective_summary)
         candidates.extend(sorted(self.settings.detective_summary.parent.glob("*/last-summary.json")))
         candidates = list(dict.fromkeys(candidates))
-        if not candidates:
-            return {"created_at": None, "events": [], "counts": {}}
         events: list[dict[str, Any]] = []
         created_values: list[str] = []
         for summary_path in candidates:
@@ -619,7 +649,12 @@ class App:
         for event in events:
             status = str(event.get("status") or "unknown")
             counts[status] = counts.get(status, 0) + 1
-        return {"created_at": max(created_values, default="") or None, "events": events, "counts": counts}
+        return {
+            "created_at": max(created_values, default="") or None,
+            "events": events,
+            "manual_events": self._manual_events(20),
+            "counts": counts,
+        }
 
     def start_refresh(self, prefix: object) -> str:
         media_path = safe_cloud_path(prefix)
