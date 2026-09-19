@@ -22,7 +22,7 @@ EPISODE_RANGE_RE = re.compile(
     r"[ ._-]*-[ ._-]*E(?:P)?(?P<episode_end>\d{1,3})(?!\d)"
 )
 DISC_RE = re.compile(
-    r"(?i)(?<![A-Za-z0-9])S(?P<season>\d{1,2})[ ._-]*D(?P<disc>\d{1,2})(?!\d)"
+    r"(?i)S(?P<season>\d{1,2})[ ._-]*(?:D|Disc[ ._-]*)(?P<disc>\d{1,2})(?!\d)"
 )
 ALT_EPISODE_RE = re.compile(r"(?i)(?<!\d)(?P<season>\d{1,2})x(?P<episode>\d{1,3})(?!\d)")
 BARE_E_RE = re.compile(r"(?i)(?<![A-Za-z0-9])E(?:P)?(?P<episode>\d{1,3})(?!\d)")
@@ -180,6 +180,8 @@ def parse_media_name(name: str, allow_bare_episode: bool = False) -> ParsedMedia
         year = int(year_matches[-1].group(1)) if year_matches else None
         if year_matches:
             prefix = prefix[:year_matches[-1].start()]
+        raw_disc_tail = stem[disc_match.end():]
+        disc_tail = technical_tail(raw_disc_tail) or canonicalize_tail(raw_disc_tail)
         return ParsedMedia(
             source_name=name,
             kind="disc",
@@ -188,7 +190,7 @@ def parse_media_name(name: str, allow_bare_episode: bool = False) -> ParsedMedia
             year=year,
             season=int(disc_match.group("season")),
             disc=int(disc_match.group("disc")),
-            technical_tail=technical_tail(stem[disc_match.end():]),
+            technical_tail=disc_tail,
         )
 
     if allow_bare_episode:

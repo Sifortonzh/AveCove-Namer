@@ -1,4 +1,5 @@
 import unittest
+from pathlib import PurePosixPath
 
 from avecove_namer.models import Entry
 from avecove_namer.naming import NamingPolicy
@@ -6,6 +7,21 @@ from avecove_namer.planner import make_plan
 
 
 class PlannerTests(unittest.TestCase):
+    def test_tv_iso_discs_keep_unique_season_and_disc_numbers(self):
+        entries = [
+            Entry(path="/115/Medici/Season2/MediciS02Disc1Blu-ray1080iAVCDTS-HDMA5.1-DIY@TTG.iso", size=1, modified="x"),
+            Entry(path="/115/Medici/Season2/MediciS02Disc2Blu-ray1080iAVCDTS-HDMA5.1-DIY@TTG.iso", size=1, modified="x"),
+        ]
+        plan = make_plan(entries, "/115/Medici", "openlist", NamingPolicy(), "Medici: Masters of Florence", 2016, False, media_kind="tv")
+        self.assertFalse(plan.conflicts)
+        self.assertEqual(
+            [PurePosixPath(operation.target).name for operation in plan.operations],
+            [
+                "Medici.Masters.of.Florence.2016.S02D01.Blu-ray1080iAVCDTS-HDMA5.1-DIY@TTG.iso",
+                "Medici.Masters.of.Florence.2016.S02D02.Blu-ray1080iAVCDTS-HDMA5.1-DIY@TTG.iso",
+            ],
+        )
+
     def test_episode_and_subtitle_are_planned_together(self):
         root = "/TV/Modern Family (2009)"
         entries = [

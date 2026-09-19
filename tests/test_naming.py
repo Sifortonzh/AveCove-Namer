@@ -53,6 +53,14 @@ class NamingTests(unittest.TestCase):
             "Camelot.2011.S01D03.1080p.BluRay.AVC.TrueHD.5.1.iso",
         )
 
+    def test_attached_disc_word_in_tv_iso_is_normalized(self):
+        parsed = parse_media_name("MediciS02Disc1Blu-ray1080iAVCDTS-HDMA5.1-DIY@TTG.iso")
+        self.assertEqual((parsed.kind, parsed.season, parsed.disc), ("disc", 2, 1))
+        self.assertEqual(
+            build_video_name(parsed, NamingPolicy(), "Medici: Masters of Florence", 2016),
+            "Medici.Masters.of.Florence.2016.S02D01.Blu-ray1080iAVCDTS-HDMA5.1-DIY@TTG.iso",
+        )
+
     def test_season_word_episode_is_supported(self):
         parsed = parse_media_name("Yellowstone.Season3E01.2020.1080p.BluRay.mkv")
         self.assertEqual((parsed.kind, parsed.season, parsed.episode), ("episode", 3, 1))
