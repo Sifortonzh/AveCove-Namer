@@ -7,6 +7,16 @@ from avecove_namer.planner import make_plan
 
 
 class PlannerTests(unittest.TestCase):
+    def test_tv_mode_skips_promotional_video_without_episode_or_disc(self):
+        entries = [
+            Entry(path="/GuangYa/Show/Season 1/Show.E01.1080p.mkv", size=10, modified="x"),
+            Entry(path="/GuangYa/Show/Season 1/大海战宣传广告.mp4", size=2, modified="x"),
+        ]
+        plan = make_plan(entries, "/GuangYa/Show", "openlist", NamingPolicy(), "My Date with a Vampire", 1998, False, media_kind="tv")
+        self.assertEqual(len(plan.operations), 1)
+        self.assertFalse(plan.conflicts)
+        self.assertEqual(plan.skipped[0]["reason"], "tv_video_without_episode_or_disc")
+
     def test_tv_iso_discs_keep_unique_season_and_disc_numbers(self):
         entries = [
             Entry(path="/115/Medici/Season2/MediciS02Disc1Blu-ray1080iAVCDTS-HDMA5.1-DIY@TTG.iso", size=1, modified="x"),

@@ -24,6 +24,8 @@ EPISODE_RANGE_RE = re.compile(
 DISC_RE = re.compile(
     r"(?i)S(?P<season>\d{1,2})[ ._-]*(?:D|Disc[ ._-]*)(?P<disc>\d{1,2})(?!\d)"
 )
+STANDALONE_DISC_RE = re.compile(r"(?i)(?:^|[^A-Za-z0-9])Disc[ ._-]*(?P<disc>\d{1,2})(?!\d)")
+SEASON_ONLY_RE = re.compile(r"(?i)(?:^|[^A-Za-z0-9])S(?P<season>\d{1,2})(?![A-Za-z0-9])")
 ALT_EPISODE_RE = re.compile(r"(?i)(?<!\d)(?P<season>\d{1,2})x(?P<episode>\d{1,3})(?!\d)")
 BARE_E_RE = re.compile(r"(?i)(?<![A-Za-z0-9])E(?:P)?(?P<episode>\d{1,3})(?!\d)")
 TRAILING_EPISODE_RE = re.compile(r"(?:^|[ ._-])(?P<episode>\d{1,3})$")
@@ -174,8 +176,16 @@ def parse_media_name(name: str, allow_bare_episode: bool = False) -> ParsedMedia
         )
 
     disc_match = DISC_RE.search(stem)
+    separated_season_match = None
+    if not disc_match:
+        standalone_disc_match = STANDALONE_DISC_RE.search(stem)
+        if standalone_disc_match:
+            separated_season_match = SEASON_ONLY_RE.search(stem[:standalone_disc_match.start()])
+            if separated_season_match:
+                disc_match = standalone_disc_match
     if disc_match:
-        prefix = stem[:disc_match.start()]
+        prefix_end = separated_season_match.start() if separated_season_match else disc_match.start()
+        prefix = stem[:prefix_end]
         year_matches = list(YEAR_RE.finditer(prefix))
         year = int(year_matches[-1].group(1)) if year_matches else None
         if year_matches:
@@ -188,7 +198,7 @@ def parse_media_name(name: str, allow_bare_episode: bool = False) -> ParsedMedia
             extension=extension,
             title=display_title(prefix),
             year=year,
-            season=int(disc_match.group("season")),
+            season=int(separated_season_match.group("season") if separated_season_match else disc_match.group("season")),
             disc=int(disc_match.group("disc")),
             technical_tail=disc_tail,
         )

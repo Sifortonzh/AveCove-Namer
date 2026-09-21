@@ -88,6 +88,9 @@ def make_plan(
         if extension not in VIDEO_EXTENSIONS:
             continue
         parsed = parse_media_name(entry.name, allow_bare_episode=media_kind == "tv")
+        if media_kind == "tv" and parsed.kind not in {"episode", "disc"}:
+            plan.skipped.append({"path": entry.path, "reason": "tv_video_without_episode_or_disc"})
+            continue
         context_title, context_year = infer_context(entry.path)
         resolved_title = title_override or context_title or parsed.title
         resolved_year = year_override or context_year or parsed.year

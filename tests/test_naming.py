@@ -61,6 +61,14 @@ class NamingTests(unittest.TestCase):
             "Medici.Masters.of.Florence.2016.S02D01.Blu-ray1080iAVCDTS-HDMA5.1-DIY@TTG.iso",
         )
 
+    def test_separated_season_and_disc_tokens_are_recognized(self):
+        parsed = parse_media_name("[Black_Sails_S1_2014][DIY.Subtitles][125GB]Disc3.iso")
+        self.assertEqual((parsed.kind, parsed.season, parsed.disc), ("disc", 1, 3))
+        self.assertEqual(
+            build_video_name(parsed, NamingPolicy(), "Black Sails", 2014),
+            "Black.Sails.2014.S01D03.iso",
+        )
+
     def test_season_word_episode_is_supported(self):
         parsed = parse_media_name("Yellowstone.Season3E01.2020.1080p.BluRay.mkv")
         self.assertEqual((parsed.kind, parsed.season, parsed.episode), ("episode", 3, 1))
