@@ -3,6 +3,7 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 const titles = { tmdb: 'TMDb 查询', namer: 'Namer', detective: '识别记录', emby: 'Emby 刷新' };
 let mediaKind = 'tv';
 let lastSourceData = null;
+let embyPendingLoaded = false;
 const basePath = location.pathname.startsWith('/media-tools') ? '/media-tools' : '';
 const mediaPathGroups = [
   {label:'115', root:'115'},
@@ -75,6 +76,7 @@ function switchView(name) {
   $('.sidebar').classList.remove('open');
   location.hash = name;
   if (name === 'detective') { loadDetective(); loadAutomationStatus(); }
+  if (name === 'emby' && !embyPendingLoaded) { embyPendingLoaded = true; loadEmbyPending(); }
 }
 
 $$('.nav-item').forEach(item => item.addEventListener('click', () => switchView(item.dataset.view)));
@@ -330,6 +332,26 @@ $('#emby-form').addEventListener('submit', async event => {
   try { const data = await api('/api/emby/refresh', {path:$('#emby-path').value}); pollJob(data.job_id); }
   catch (error) { fail(target, error); }
 });
+
+$('#emby-detect').addEventListener('click', loadEmbyPending);
+
+async function loadEmbyPending() {
+  const target = $('#emby-pending');
+  const button = $('#emby-detect');
+  button.disabled = true;
+  loading(target, '正在浅层核对云盘与 Emby STRM，不读取视频内容');
+  try {
+    const data = await api('/api/emby/pending');
+    target.className = 'result-space result-card';
+    target.innerHTML = `<div class="result-toolbar"><div><strong>${data.pending_count ? `${data.pending_count} 个项目尚未进入 Emby` : '当前没有待同步项目'}</strong><div class="meta">已检查 ${data.scanned_roots} 个分类 · 云盘 ${data.cloud_titles} 项 · 已入库 ${data.present_titles} 项 · ${data.errors.length} 个目录暂不可用</div></div><span class="status ${data.pending_count ? 'planned' : 'compliant'}">${data.pending_count ? '等待手动同步' : '已同步'}</span></div>${data.pending.length ? `<div class="event-list">${data.pending.map(item => `<article class="event-item"><div><h3>${escapeHtml(item.name)}</h3><p><b class="provider-tag">${escapeHtml(item.provider)} · ${escapeHtml(item.category)}</b>${escapeHtml(item.path)}</p></div><button class="mini-button sync-pending" type="button" data-path="${escapeHtml(item.path)}">同步这一项</button></article>`).join('')}</div>` : '<div class="history-empty">云盘第一层作品目录均已存在于 Emby STRM 索引。</div>'}`;
+    $$('.sync-pending').forEach(syncButton => syncButton.addEventListener('click', () => {
+      $('#emby-path').value = syncButton.dataset.path;
+      $('#emby-form').requestSubmit();
+      $('#emby-result').scrollIntoView({behavior:'smooth', block:'center'});
+    }));
+  } catch (error) { fail(target, error); }
+  finally { button.disabled = false; }
+}
 
 async function pollJob(jobId) {
   const target = $('#emby-result');

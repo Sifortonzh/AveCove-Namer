@@ -77,3 +77,27 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(len(events), 20)
             self.assertTrue(events[0]["path"].endswith("Test 22"))
             self.assertTrue(events[-1]["path"].endswith("Test 3"))
+
+    def test_emby_pending_only_lists_cloud_titles_without_local_strm(self):
+        class Backend:
+            def list_directories(self, root, refresh=False):
+                if root == "/115/00剧/01美":
+                    return [{"name": "Existing (2020)"}, {"name": "New Show (2026)"}]
+                return []
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            local = root / "media" / "115/00剧/01美/Existing (2020)"
+            local.mkdir(parents=True)
+            (local / "episode.strm").write_text("https://example.invalid/video", encoding="utf-8")
+            settings = Settings(
+                host="127.0.0.1", port=8787, openlist_url="http://127.0.0.1:5245",
+                openlist_token_file=root / "openlist.token", tmdb_token_file=root / "tmdb.token",
+                work_root=root / "jobs", detective_summary=root / "summary.json",
+                refresh_worker=root / "refresh.py", media_index_root=root / "media",
+            )
+            app = App(settings)
+            app.openlist = lambda: Backend()
+            result = app.emby_pending()
+            self.assertEqual(result["pending_count"], 1)
+            self.assertEqual(result["pending"][0]["path"], "/115/00剧/01美/New Show (2026)")

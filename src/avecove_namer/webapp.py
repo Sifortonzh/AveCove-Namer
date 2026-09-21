@@ -48,11 +48,11 @@ BROAD_NAMER_PATHS = {
 
 CLOUD_LIBRARY_ROOTS = {
     "tv": (
-        "/115/00剧/01中", "/115/00剧/01日", "/115/00剧/01韩", "/115/00剧/01美", "/115/00剧/01英", "/115/00剧/02其他",
-        "/123/00剧/01中", "/123/00剧/01日", "/123/00剧/01韩", "/123/00剧/01美", "/123/00剧/01英",
-        "/GuangYa/00剧/01中", "/GuangYa/00剧/01日", "/GuangYa/00剧/01韩", "/GuangYa/00剧/01美", "/GuangYa/00剧/01英",
-        "/Baidu/00剧/01中", "/Baidu/00剧/01日", "/Baidu/00剧/01韩", "/Baidu/00剧/01美", "/Baidu/00剧/01英",
-        "/Quark/00剧/01中", "/Quark/00剧/01日", "/Quark/00剧/01韩", "/Quark/00剧/01美", "/Quark/00剧/01英",
+        "/115/00剧/01中", "/115/00剧/01日", "/115/00剧/01韩", "/115/00剧/01美", "/115/00剧/01台", "/115/00剧/01英", "/115/00剧/02其他",
+        "/123/00剧/01中", "/123/00剧/01日", "/123/00剧/01韩", "/123/00剧/01美", "/123/00剧/01台", "/123/00剧/01英",
+        "/GuangYa/00剧/01中", "/GuangYa/00剧/01日", "/GuangYa/00剧/01韩", "/GuangYa/00剧/01美", "/GuangYa/00剧/01台", "/GuangYa/00剧/01英",
+        "/Baidu/00剧/01中", "/Baidu/00剧/01日", "/Baidu/00剧/01韩", "/Baidu/00剧/01美", "/Baidu/00剧/01台", "/Baidu/00剧/01英",
+        "/Quark/00剧/01中", "/Quark/00剧/01日", "/Quark/00剧/01韩", "/Quark/00剧/01美", "/Quark/00剧/01台", "/Quark/00剧/01英",
     ),
     "movie": (
         "/115/00影/01国", "/115/00影/01外", "/123/00影/01国", "/123/00影/01外",
@@ -277,6 +277,53 @@ class App:
             "found": bool(unique),
             "message": "快快观看吧！" if unique else "快快收藏吧！",
             "matches": unique[:20],
+        }
+
+    def emby_pending(self) -> dict[str, Any]:
+        """Shallowly compare cloud titles with the local STRM index."""
+        backend = self.openlist()
+        roots = sorted({root for values in CLOUD_LIBRARY_ROOTS.values() for root in values})
+        pending: list[dict[str, str]] = []
+        errors: list[dict[str, str]] = []
+        cloud_titles = present_titles = 0
+        scanned_roots = 0
+        for root in roots:
+            # Only category roots are titles; e.g. /Quark/00影 itself contains categories.
+            if len(PurePosixPath(root).parts) < 4:
+                continue
+            try:
+                directories = self._cloud_directories(backend, root)
+            except BackendError as exc:
+                errors.append({"root": root, "error": str(exc)})
+                continue
+            scanned_roots += 1
+            local_root = self.settings.media_index_root / root.lstrip("/")
+            for item in directories:
+                name = str(item.get("name") or "").strip()
+                if not name:
+                    continue
+                cloud_titles += 1
+                local_path = local_root / name
+                if local_path.is_dir() and any(local_path.rglob("*.strm")):
+                    present_titles += 1
+                    continue
+                path = str(PurePosixPath(root) / name)
+                pending.append({
+                    "provider": PurePosixPath(root).parts[1],
+                    "category": PurePosixPath(root).name,
+                    "name": name,
+                    "path": path,
+                })
+        unique = list({item["path"]: item for item in pending}.values())
+        unique.sort(key=lambda item: (item["provider"].casefold(), item["category"].casefold(), item["name"].casefold()))
+        return {
+            "mode": "shallow",
+            "scanned_roots": scanned_roots,
+            "cloud_titles": cloud_titles,
+            "present_titles": present_titles,
+            "pending_count": len(unique),
+            "pending": unique,
+            "errors": errors,
         }
 
     def automation_status(self) -> dict[str, Any]:
@@ -691,6 +738,8 @@ class App:
             raise ValueError("服务器未配置 Emby 刷新程序")
         job_id = secrets.token_hex(8)
         with self._jobs_lock:
+            if any(job.get("type") == "emby_refresh" and job.get("status") == "running" for job in self._jobs.values()):
+                raise ValueError("已有一个 Emby 同步任务正在运行，请完成后再同步下一项")
             self._jobs[job_id] = {"id": job_id, "type": "emby_refresh", "path": media_path, "status": "running", "started_at": utc_now()}
         threading.Thread(target=self._run_refresh, args=(job_id, media_path), daemon=True).start()
         return job_id
@@ -785,6 +834,9 @@ def handler_factory(app: App):
                     return
                 if path == "/api/automation":
                     self.json_response(HTTPStatus.OK, app.automation_status())
+                    return
+                if path == "/api/emby/pending":
+                    self.json_response(HTTPStatus.OK, app.emby_pending())
                     return
                 if path.startswith("/api/watch/image/"):
                     body, content_type = app.emby_image(path.rsplit("/", 1)[-1])
