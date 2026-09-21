@@ -123,3 +123,23 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(result["remove_count"], 1)
             self.assertTrue(first.is_file())
             self.assertTrue(second.is_file())
+
+    def test_emby_duplicate_plan_prefers_matching_season_folder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            media = root / "media"
+            correct = media / "115/00剧/01美/Show (2020)/Season 01/Show.2020.S01E02.strm"
+            stale = media / "115/00剧/01美/Show (2020)/Season 04/Show.2020.S01E02.strm"
+            correct.parent.mkdir(parents=True)
+            stale.parent.mkdir(parents=True)
+            correct.write_text("correct", encoding="utf-8")
+            stale.write_text("stale", encoding="utf-8")
+            settings = Settings(
+                host="127.0.0.1", port=8787, openlist_url="http://127.0.0.1:5245",
+                openlist_token_file=root / "openlist.token", tmdb_token_file=root / "tmdb.token",
+                work_root=root / "jobs", detective_summary=root / "summary.json",
+                refresh_worker=root / "refresh.py", media_index_root=media,
+            )
+            result = App(settings).emby_duplicates()
+            self.assertIn("Season 01", result["groups"][0]["keep"])
+            self.assertIn("Season 04", result["groups"][0]["remove"][0])

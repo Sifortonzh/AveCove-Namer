@@ -72,6 +72,8 @@ AUTOMATION_TIMERS = (
 STRM_EPISODE_RE = re.compile(r"(?i)^(?P<title>.+?)[ ._-](?P<year>19\d{2}|20\d{2})[ ._-]S(?P<season>\d{1,2})E(?P<episode>\d{1,3})")
 STRM_DISC_RE = re.compile(r"(?i)^(?P<title>.+?)[ ._-](?P<year>19\d{2}|20\d{2})[ ._-]S(?P<season>\d{1,2})D(?P<disc>\d{1,2})")
 STRM_MOVIE_RE = re.compile(r"(?i)^(?P<title>.+?)[ ._-](?P<year>19\d{2}|20\d{2})(?:[ ._-]|$)")
+PATH_SEASON_RE = re.compile(r"(?i)(?:season|(?<![a-z0-9])s)[ ._-]*0*(\d{1,2})(?:[^0-9]|$)")
+PATH_CHINESE_SEASON_RE = re.compile(r"第[ ._-]*0*(\d{1,2})[ ._-]*季")
 EMBY_LIBRARY_IDS = {
     "00剧/01美": {3}, "00剧/01英": {3}, "00剧/02其他": {3}, "00剧/01中": {11},
     "00剧/01韩": {18}, "00剧/01日": {22}, "00剧/01台": {101295},
@@ -384,9 +386,18 @@ class App:
             if len(paths) < 2:
                 continue
             title_key = key.split("|")[2]
-            def priority(path: Path) -> tuple[int, int, str]:
+            suffix = key.rsplit("|", 1)[-1]
+            season_match = re.match(r"S(\d{2})", suffix)
+            expected_season = int(season_match.group(1)) if season_match else None
+            def priority(path: Path) -> tuple[int, int, int, str]:
+                folder_seasons = []
+                for part in path.parts[:-1]:
+                    match = PATH_SEASON_RE.search(part) or PATH_CHINESE_SEASON_RE.search(part)
+                    if match:
+                        folder_seasons.append(int(match.group(1)))
+                correct_season = int(expected_season is None or expected_season in folder_seasons or not folder_seasons)
                 parent_match = max((int(title_key in normalized_media_name(part)) for part in path.parts[:-1]), default=0)
-                return parent_match, path.stat().st_mtime_ns, str(path)
+                return correct_season, parent_match, path.stat().st_mtime_ns, str(path)
             keep = max(paths, key=priority)
             remove = sorted((path for path in paths if path != keep), key=str)
             group_id = secrets.token_hex(6)
