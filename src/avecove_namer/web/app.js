@@ -334,6 +334,30 @@ $('#emby-form').addEventListener('submit', async event => {
 });
 
 $('#emby-detect').addEventListener('click', loadEmbyPending);
+$('#emby-duplicates-detect').addEventListener('click', loadEmbyDuplicates);
+
+async function loadEmbyDuplicates() {
+  const target = $('#emby-duplicates');
+  const button = $('#emby-duplicates-detect');
+  button.disabled = true;
+  loading(target, '正在只读扫描本地 STRM，不访问视频内容');
+  try {
+    const data = await api('/api/emby/duplicates');
+    target.className = 'result-space result-card';
+    target.innerHTML = `<div class="result-toolbar"><div><strong>${data.group_count} 组重复 STRM</strong><div class="meta">拟隔离 ${data.remove_count} 项；每组保留目录匹配度最高、时间最新的一项</div></div><span class="status ${data.group_count ? 'planned' : 'compliant'}">${data.group_count ? '等待确认' : '无重复'}</span></div>${data.groups.length ? `<div class="event-list">${data.groups.map(group => `<article class="event-item duplicate-group" data-group="${group.id}"><div><h3>${escapeHtml(group.label)}</h3><p><b class="provider-tag">保留</b>${escapeHtml(group.keep)}</p><p><b class="provider-tag">拟清理 ${group.remove.length} 项</b>${group.remove.map(escapeHtml).join('<br>')}</p></div><button class="mini-button clean-duplicates" type="button" data-group="${group.id}" data-count="${group.remove.length}">询问并清理</button></article>`).join('')}</div>` : '<div class="history-empty">没有发现可确定的重复 STRM。</div>'}`;
+    $$('.clean-duplicates').forEach(cleanButton => cleanButton.addEventListener('click', async () => {
+      const count = Number(cleanButton.dataset.count);
+      if (!confirm(`将保留上方标记的一项，其余 ${count} 项移入可恢复隔离区。是否继续？`)) return;
+      cleanButton.disabled = true;
+      try {
+        const result = await api('/api/emby/duplicates/clean', {plan_id:data.plan_id, group_id:cleanButton.dataset.group, confirmation:`清理 ${count} 项`});
+        cleanButton.closest('.duplicate-group').remove();
+        toast(`已隔离 ${result.moved} 个重复 STRM，并通知 Emby 刷新`);
+      } catch (error) { toast(error.message || String(error), true); cleanButton.disabled = false; }
+    }));
+  } catch (error) { fail(target, error); }
+  finally { button.disabled = false; }
+}
 
 async function loadEmbyPending() {
   const target = $('#emby-pending');

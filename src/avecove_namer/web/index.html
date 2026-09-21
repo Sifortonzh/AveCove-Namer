@@ -82,7 +82,8 @@
       </section>
 
       <section class="view" id="view-emby">
-        <div class="section-head"><div><h2>Emby 定向刷新</h2><p>自动找出云盘已有、Emby 尚未入库的作品，再逐项低负载同步。</p></div><div class="section-actions"><button class="secondary" id="emby-detect" type="button">检测待同步项目</button></div></div>
+        <div class="section-head"><div><h2>Emby 定向刷新</h2><p>自动找出未入库项目与重复 STRM，再逐项低负载处理。</p></div><div class="section-actions"><button class="secondary" id="emby-duplicates-detect" type="button">检测重复 STRM</button><button class="secondary" id="emby-detect" type="button">检测待同步项目</button></div></div>
+        <div id="emby-duplicates" class="result-space empty-state"><span class="empty-icon">≋</span><p>重复检测只生成预览，确认后移入可恢复隔离区</p></div>
         <div id="emby-pending" class="result-space empty-state"><span class="empty-icon">◎</span><p>进入页面后将自动进行一次浅层检测</p></div>
         <div class="path-presets grouped-presets emby-presets" id="emby-presets" aria-label="Emby 刷新常用路径"></div>
         <form class="command-bar" id="emby-form">
@@ -95,6 +96,6 @@
     </main>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=guided-10" defer></script>
+  <script src="app.js?v=guided-11" defer></script>
 </body>
 </html>

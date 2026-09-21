@@ -101,3 +101,25 @@ class WebAppTests(unittest.TestCase):
             result = app.emby_pending()
             self.assertEqual(result["pending_count"], 1)
             self.assertEqual(result["pending"][0]["path"], "/115/00剧/01美/New Show (2026)")
+
+    def test_emby_duplicate_plan_keeps_one_episode_and_only_previews_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            media = root / "media"
+            first = media / "123/00剧/01美/Show (2020)/Old/Show.2020.S01E01.1080p.strm"
+            second = media / "123/00剧/01美/Show (2020)/Show.2020.S01E01.2160p.strm"
+            first.parent.mkdir(parents=True)
+            second.parent.mkdir(parents=True, exist_ok=True)
+            first.write_text("old", encoding="utf-8")
+            second.write_text("new", encoding="utf-8")
+            settings = Settings(
+                host="127.0.0.1", port=8787, openlist_url="http://127.0.0.1:5245",
+                openlist_token_file=root / "openlist.token", tmdb_token_file=root / "tmdb.token",
+                work_root=root / "jobs", detective_summary=root / "summary.json",
+                refresh_worker=root / "refresh.py", media_index_root=media,
+            )
+            result = App(settings).emby_duplicates()
+            self.assertEqual(result["group_count"], 1)
+            self.assertEqual(result["remove_count"], 1)
+            self.assertTrue(first.is_file())
+            self.assertTrue(second.is_file())

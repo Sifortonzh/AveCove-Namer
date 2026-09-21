@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 import random
 import re
 import secrets
+import shutil
 import sqlite3
 import subprocess
 import threading
@@ -67,6 +68,16 @@ AUTOMATION_TIMERS = (
     "avecove-namer-detective-baidu.timer",
     "avecove-namer-detective-guangya.timer",
 )
+
+STRM_EPISODE_RE = re.compile(r"(?i)^(?P<title>.+?)[ ._-](?P<year>19\d{2}|20\d{2})[ ._-]S(?P<season>\d{1,2})E(?P<episode>\d{1,3})")
+STRM_DISC_RE = re.compile(r"(?i)^(?P<title>.+?)[ ._-](?P<year>19\d{2}|20\d{2})[ ._-]S(?P<season>\d{1,2})D(?P<disc>\d{1,2})")
+STRM_MOVIE_RE = re.compile(r"(?i)^(?P<title>.+?)[ ._-](?P<year>19\d{2}|20\d{2})(?:[ ._-]|$)")
+EMBY_LIBRARY_IDS = {
+    "00剧/01美": {3}, "00剧/01英": {3}, "00剧/02其他": {3}, "00剧/01中": {11},
+    "00剧/01韩": {18}, "00剧/01日": {22}, "00剧/01台": {101295},
+    "00影/01外": {25}, "00影/01国": {30}, "00漫/01日": {41}, "00漫/01中": {45},
+    "00漫/01美": {45}, "00综": {36},
+}
 
 
 def normalized_media_name(value: object) -> str:
@@ -325,6 +336,112 @@ class App:
             "pending": unique,
             "errors": errors,
         }
+
+    def _strm_identity(self, relative: Path) -> tuple[str, str] | None:
+        if len(relative.parts) < 4:
+            return None
+        stem = relative.stem
+        match = STRM_EPISODE_RE.search(stem)
+        kind = "episode"
+        suffix = ""
+        if match:
+            suffix = f"S{int(match.group('season')):02d}E{int(match.group('episode')):02d}"
+        else:
+            match = STRM_DISC_RE.search(stem)
+            kind = "disc"
+            if match:
+                suffix = f"S{int(match.group('season')):02d}D{int(match.group('disc')):02d}"
+        if not match and relative.parts[1] == "00影":
+            match = STRM_MOVIE_RE.search(stem)
+            kind = "movie"
+        if not match:
+            return None
+        title = normalized_media_name(match.group("title"))
+        year = match.group("year")
+        if not title:
+            return None
+        category = "/".join(relative.parts[:3])
+        key = f"{category}|{kind}|{title}|{year}|{suffix}"
+        label = f"{match.group('title').replace('.', ' ')} ({year})" + (f" · {suffix}" if suffix else "")
+        return key, label
+
+    def emby_duplicates(self) -> dict[str, Any]:
+        root = self.settings.media_index_root
+        groups: dict[str, list[Path]] = {}
+        labels: dict[str, str] = {}
+        for path in root.rglob("*.strm") if root.is_dir() else ():
+            relative = path.relative_to(root)
+            identity = self._strm_identity(relative)
+            if not identity:
+                continue
+            key, label = identity
+            groups.setdefault(key, []).append(path)
+            labels[key] = label
+        plan_id = secrets.token_hex(8)
+        output = []
+        stored_groups = []
+        for key, paths in groups.items():
+            if len(paths) < 2:
+                continue
+            title_key = key.split("|")[2]
+            def priority(path: Path) -> tuple[int, int, str]:
+                parent_match = max((int(title_key in normalized_media_name(part)) for part in path.parts[:-1]), default=0)
+                return parent_match, path.stat().st_mtime_ns, str(path)
+            keep = max(paths, key=priority)
+            remove = sorted((path for path in paths if path != keep), key=str)
+            group_id = secrets.token_hex(6)
+            item = {
+                "id": group_id, "label": labels[key],
+                "keep": str(keep.relative_to(root)),
+                "remove": [str(path.relative_to(root)) for path in remove],
+            }
+            output.append(item)
+            stored_groups.append(item)
+        output.sort(key=lambda item: item["label"].casefold())
+        plan_dir = self.settings.work_root / "duplicate-plans"
+        plan_dir.mkdir(parents=True, exist_ok=True)
+        (plan_dir / f"{plan_id}.json").write_text(json.dumps({"groups": stored_groups}, ensure_ascii=False), encoding="utf-8")
+        return {"plan_id": plan_id, "group_count": len(output), "remove_count": sum(len(item["remove"]) for item in output), "groups": output}
+
+    def clean_emby_duplicates(self, payload: dict[str, Any]) -> dict[str, Any]:
+        plan_id = str(payload.get("plan_id") or "")
+        group_id = str(payload.get("group_id") or "")
+        if not re.fullmatch(r"[0-9a-f]{16}", plan_id) or not re.fullmatch(r"[0-9a-f]{12}", group_id):
+            raise ValueError("重复项清理计划无效")
+        plan_path = self.settings.work_root / "duplicate-plans" / f"{plan_id}.json"
+        if not plan_path.is_file():
+            raise ValueError("清理计划已失效，请重新检测")
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        group = next((item for item in plan.get("groups", []) if item.get("id") == group_id), None)
+        if not group:
+            raise ValueError("找不到要清理的重复组")
+        count = len(group.get("remove") or [])
+        if str(payload.get("confirmation") or "").strip() != f"清理 {count} 项":
+            raise ValueError(f"确认文字必须是：清理 {count} 项")
+        root = self.settings.media_index_root.resolve()
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        quarantine = Path("/opt/emby-strm/quarantine/duplicate-cleanup") / stamp
+        moved = []
+        affected_ids: set[int] = set()
+        for value in group["remove"]:
+            source = (root / value).resolve()
+            if root not in source.parents or source.suffix.casefold() != ".strm":
+                raise ValueError("检测到不安全的 STRM 路径，已停止")
+            if not source.is_file():
+                continue
+            destination = quarantine / value
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source), str(destination))
+            moved.append(value)
+            for marker, ids in EMBY_LIBRARY_IDS.items():
+                if marker in value:
+                    affected_ids.update(ids)
+        token = self._emby_token()
+        for item_id in sorted(affected_ids):
+            url = self.settings.emby_url.rstrip("/") + f"/emby/Items/{item_id}/Refresh?Recursive=true"
+            request = urllib.request.Request(url, data=b"", method="POST", headers={"X-Emby-Token": token})
+            urllib.request.urlopen(request, timeout=20).read()
+        return {"moved": len(moved), "quarantine": str(quarantine), "refreshed_libraries": sorted(affected_ids)}
 
     def automation_status(self) -> dict[str, Any]:
         states: dict[str, bool] = {}
@@ -838,6 +955,9 @@ def handler_factory(app: App):
                 if path == "/api/emby/pending":
                     self.json_response(HTTPStatus.OK, app.emby_pending())
                     return
+                if path == "/api/emby/duplicates":
+                    self.json_response(HTTPStatus.OK, app.emby_duplicates())
+                    return
                 if path.startswith("/api/watch/image/"):
                     body, content_type = app.emby_image(path.rsplit("/", 1)[-1])
                     self.binary_response(HTTPStatus.OK, body, content_type)
@@ -876,6 +996,7 @@ def handler_factory(app: App):
                     "/api/namer/identify": app.identify_path,
                     "/api/namer/apply": app.apply_plan,
                     "/api/emby/refresh": lambda payload: {"job_id": app.start_refresh(payload.get("path"))},
+                    "/api/emby/duplicates/clean": app.clean_emby_duplicates,
                     "/api/watch/recommendations": app.watch_recommendations,
                 }
                 action = routes.get(routed_path(self.path))
