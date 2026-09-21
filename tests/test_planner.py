@@ -136,6 +136,25 @@ class PlannerTests(unittest.TestCase):
         self.assertIn(f"{root}/第一季/Attack.on.Titan.2013.S01E01.1080p.mkv", targets)
         self.assertIn("/TV/進撃の巨人 (2013) {tmdb=1429}", targets)
 
+    def test_season_folder_corrects_stale_disc_season_in_filename(self):
+        root = "/TV/Black Sails (2014) {tmdb=47665}"
+        entries = [
+            Entry(f"{root}/Season 2/Black.Sails.2014.S01D01.[HDR]Disc1.iso"),
+            Entry(f"{root}/Season 2/Black.Sails.2014.S03D04.[HDR]Disc4.iso"),
+        ]
+        plan = make_plan(
+            entries,
+            root,
+            "openlist",
+            NamingPolicy(),
+            "Black Sails",
+            2014,
+            media_kind="tv",
+        )
+        targets = [operation.target for operation in plan.operations]
+        self.assertIn(f"{root}/Season 2/Black.Sails.2014.S02D01.[HDR]Disc1.iso", targets)
+        self.assertIn(f"{root}/Season 2/Black.Sails.2014.S02D04.[HDR]Disc4.iso", targets)
+
 
 if __name__ == "__main__":
     unittest.main()

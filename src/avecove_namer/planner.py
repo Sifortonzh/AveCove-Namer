@@ -4,6 +4,7 @@ import csv
 import json
 import re
 from collections import defaultdict
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 
@@ -27,6 +28,18 @@ def utc_now() -> str:
 
 def sibling_path(source: str, target_name: str) -> str:
     return str(PurePosixPath(source).parent / target_name)
+
+
+PARENT_SEASON_RE = re.compile(r"(?i)(?:^|[^a-z0-9])(?:season|s)[ ._-]*0*(\d{1,2})(?:[^0-9]|$)")
+PARENT_CHINESE_SEASON_RE = re.compile(r"第[ ._-]*0*(\d{1,2})[ ._-]*季")
+
+
+def _parent_season(path: str) -> int | None:
+    for part in reversed(PurePosixPath(path).parts[:-1]):
+        match = PARENT_SEASON_RE.search(part) or PARENT_CHINESE_SEASON_RE.search(part)
+        if match:
+            return int(match.group(1))
+    return None
 
 
 def _episode_key(name: str) -> tuple[int, int] | None:
@@ -91,6 +104,9 @@ def make_plan(
         if media_kind == "tv" and parsed.kind not in {"episode", "disc"}:
             plan.skipped.append({"path": entry.path, "reason": "tv_video_without_episode_or_disc"})
             continue
+        folder_season = _parent_season(entry.path) if media_kind == "tv" else None
+        if folder_season and parsed.kind in {"episode", "disc"} and parsed.season != folder_season:
+            parsed = replace(parsed, season=folder_season)
         context_title, context_year = infer_context(entry.path)
         resolved_title = title_override or context_title or parsed.title
         resolved_year = year_override or context_year or parsed.year
