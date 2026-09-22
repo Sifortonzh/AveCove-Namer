@@ -365,8 +365,8 @@ class App:
         })
         items: list[dict[str, str]] = []
         marker = "/openlist-local-tree/"
-        present_tmdb: set[tuple[str, str]] = set()
-        present_names: set[tuple[str, str, str]] = set()
+        present_tmdb: set[str] = set()
+        present_names: set[tuple[str, str]] = set()
         for strm_path in self.settings.media_index_root.rglob("*.strm") if self.settings.media_index_root.is_dir() else ():
             relative = strm_path.relative_to(self.settings.media_index_root)
             if len(relative.parts) < 4:
@@ -374,10 +374,10 @@ class App:
             provider, category, title = relative.parts[0], relative.parts[2], relative.parts[3]
             tmdb_id = media_tmdb_id(title)
             if tmdb_id:
-                present_tmdb.add((provider, tmdb_id))
+                present_tmdb.add(tmdb_id)
             normalized = normalized_media_name(title)
             if normalized:
-                present_names.add((provider, category, normalized))
+                present_names.add((category, normalized))
         for item in data.get("Items", []) if isinstance(data, dict) else []:
             emby_path = str(item.get("Path") or "")
             if marker not in emby_path:
@@ -394,7 +394,7 @@ class App:
             provider_ids = item.get("ProviderIds") if isinstance(item.get("ProviderIds"), dict) else {}
             tmdb_id = str(provider_ids.get("Tmdb") or provider_ids.get("TMDb") or "")
             normalized = normalized_media_name(item.get("Name"))
-            if (tmdb_id and (provider, tmdb_id) in present_tmdb) or (normalized and (provider, category, normalized) in present_names):
+            if (tmdb_id and tmdb_id in present_tmdb) or (normalized and (category, normalized) in present_names):
                 continue
             items.append({
                 "id": str(item.get("Id") or ""), "name": str(item.get("Name") or PurePosixPath(relative).name),
