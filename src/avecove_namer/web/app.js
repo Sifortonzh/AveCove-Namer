@@ -4,6 +4,8 @@ const titles = { tmdb: 'TMDb 查询', namer: 'Namer', detective: '识别记录',
 let mediaKind = 'tv';
 let lastSourceData = null;
 let embyPendingLoaded = false;
+let namerInboxLoaded = false;
+const embyQueue = new Map();
 const basePath = location.pathname.startsWith('/media-tools') ? '/media-tools' : '';
 const mediaPathGroups = [
   {label:'115', root:'115'},
@@ -67,7 +69,6 @@ function presetMarkup() {
 }
 
 $('#namer-presets').innerHTML = presetMarkup();
-$('#emby-presets').innerHTML = presetMarkup();
 
 function switchView(name) {
   $$('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.view === name));
@@ -76,7 +77,8 @@ function switchView(name) {
   $('.sidebar').classList.remove('open');
   location.hash = name;
   if (name === 'detective') { loadDetective(); loadAutomationStatus(); }
-  if (name === 'emby' && !embyPendingLoaded) { embyPendingLoaded = true; loadEmbyPending(); }
+  if (name === 'namer' && !namerInboxLoaded) { namerInboxLoaded = true; loadNamerInbox(); }
+  if (name === 'emby' && !embyPendingLoaded) { embyPendingLoaded = true; loadEmbyCenter(); }
 }
 
 $$('.nav-item').forEach(item => item.addEventListener('click', () => switchView(item.dataset.view)));
@@ -203,13 +205,6 @@ $$('.namer-presets button').forEach(button => button.addEventListener('click', (
   input.setSelectionRange(input.value.length, input.value.length);
 }));
 
-$$('.emby-presets button').forEach(button => button.addEventListener('click', () => {
-  const input = $('#emby-path');
-  input.value = button.dataset.path;
-  input.focus();
-  input.setSelectionRange(input.value.length, input.value.length);
-}));
-
 function renderIdentification(data) {
   const target = $('#namer-result');
   const confidence = Math.round((data.score || 0) * 100);
@@ -325,66 +320,156 @@ async function toggleAutomation() {
   }
 }
 
-$('#emby-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  const target = $('#emby-result');
-  loading(target, '正在创建刷新任务');
-  try { const data = await api('/api/emby/refresh', {path:$('#emby-path').value}); pollJob(data.job_id); }
-  catch (error) { fail(target, error); }
-});
+function providerLabel(provider) {
+  return ({GuangYa:'光鸭', Baidu:'百度'})[provider] || provider;
+}
 
-$('#emby-detect').addEventListener('click', loadEmbyPending);
-$('#emby-duplicates-detect').addEventListener('click', loadEmbyDuplicates);
+function groupByProvider(items) {
+  return items.reduce((groups, item) => {
+    (groups[item.provider] ||= []).push(item);
+    return groups;
+  }, {});
+}
 
-async function loadEmbyDuplicates() {
-  const target = $('#emby-duplicates');
-  const button = $('#emby-duplicates-detect');
+async function fetchPending() {
+  return api('/api/emby/pending');
+}
+
+function beginNamerForPath(path, category) {
+  $('#namer-path').value = path;
+  $('#namer-kind').value = category === '00影' ? 'movie' : 'tv';
+  $('#namer-form').requestSubmit();
+  $('#namer-result').scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+async function loadNamerInbox() {
+  const target = $('#namer-inbox');
+  const button = $('#namer-inbox-reload');
   button.disabled = true;
-  loading(target, '正在只读扫描本地 STRM，不访问视频内容');
+  target.innerHTML = '<div class="history-empty">正在浅层检测新入库资源，不读取视频内容…</div>';
   try {
-    const data = await api('/api/emby/duplicates');
-    target.className = 'result-space result-card';
-    target.innerHTML = `<div class="result-toolbar"><div><strong>${data.group_count} 组重复 STRM</strong><div class="meta">拟隔离 ${data.remove_count} 项；每组保留目录匹配度最高、时间最新的一项</div></div><span class="status ${data.group_count ? 'planned' : 'compliant'}">${data.group_count ? '等待确认' : '无重复'}</span></div>${data.groups.length ? `<div class="event-list">${data.groups.map(group => `<article class="event-item duplicate-group" data-group="${group.id}"><div><h3>${escapeHtml(group.label)}</h3><p><b class="provider-tag">保留</b>${escapeHtml(group.keep)}</p><p><b class="provider-tag">拟清理 ${group.remove.length} 项</b>${group.remove.map(escapeHtml).join('<br>')}</p></div><button class="mini-button clean-duplicates" type="button" data-group="${group.id}" data-count="${group.remove.length}">询问并清理</button></article>`).join('')}</div>` : '<div class="history-empty">没有发现可确定的重复 STRM。</div>'}`;
-    $$('.clean-duplicates').forEach(cleanButton => cleanButton.addEventListener('click', async () => {
-      const count = Number(cleanButton.dataset.count);
-      if (!confirm(`将保留上方标记的一项，其余 ${count} 项移入可恢复隔离区。是否继续？`)) return;
-      cleanButton.disabled = true;
-      try {
-        const result = await api('/api/emby/duplicates/clean', {plan_id:data.plan_id, group_id:cleanButton.dataset.group, confirmation:`清理 ${count} 项`});
-        cleanButton.closest('.duplicate-group').remove();
-        toast(`已隔离 ${result.moved} 个重复 STRM，并通知 Emby 刷新`);
-      } catch (error) { toast(error.message || String(error), true); cleanButton.disabled = false; }
-    }));
-  } catch (error) { fail(target, error); }
-  finally { button.disabled = false; }
+    const data = await fetchPending();
+    const grouped = groupByProvider(data.pending);
+    target.innerHTML = `<div class="inbox-heading"><div><strong>新入库待整理</strong><span>${data.pending_count} 项尚未进入 Emby</span></div><small>点击作品即自动带入 Namer</small></div>${Object.entries(grouped).length ? Object.entries(grouped).map(([provider, items]) => `<section class="provider-task-group"><div class="provider-task-head"><strong>${escapeHtml(providerLabel(provider))}</strong><span>${items.length} 项</span></div><div class="compact-task-list">${items.map(item => `<button class="compact-task namer-inbox-item" type="button" data-path="${escapeHtml(item.path)}" data-category="${escapeHtml(item.category)}"><span>${escapeHtml(item.name)}</span><small>${escapeHtml(item.category)}</small></button>`).join('')}</div></section>`).join('') : '<div class="history-empty">没有发现新入库项目。</div>'}`;
+    $$('.namer-inbox-item').forEach(item => item.addEventListener('click', () => beginNamerForPath(item.dataset.path, item.dataset.category)));
+  } catch (error) {
+    target.innerHTML = `<div class="history-empty">检测失败：${escapeHtml(error.message || error)}</div>`;
+    toast(error.message || String(error), true);
+  } finally { button.disabled = false; }
+}
+
+$('#namer-inbox-reload').addEventListener('click', loadNamerInbox);
+$('#emby-reload-all').addEventListener('click', loadEmbyCenter);
+$('#emby-run-queue').addEventListener('click', runEmbyQueue);
+
+function updateEmbyQueue() {
+  const button = $('#emby-run-queue');
+  const count = embyQueue.size;
+  $('#emby-queue-count').textContent = count ? `已收集 ${count} 个项目` : '尚未选择项目';
+  button.disabled = !count;
+  $$('.queue-item').forEach(item => {
+    const selected = embyQueue.has(item.dataset.path);
+    item.classList.toggle('selected', selected);
+    item.textContent = selected ? '移出集合' : '加入集合';
+  });
+}
+
+function addProviderToQueue(items) {
+  items.forEach(item => embyQueue.set(item.path, item));
+  updateEmbyQueue();
+}
+
+async function loadEmbyCenter() {
+  const button = $('#emby-reload-all');
+  button.disabled = true;
+  button.textContent = '正在检测…';
+  await loadEmbyPending();
+  await loadEmbyDuplicates();
+  button.disabled = false;
+  button.textContent = '重新检测';
 }
 
 async function loadEmbyPending() {
   const target = $('#emby-pending');
-  const button = $('#emby-detect');
-  button.disabled = true;
-  loading(target, '正在浅层核对云盘与 Emby STRM，不读取视频内容');
+  loading(target, '正在按网盘收集待刷新项目');
   try {
-    const data = await api('/api/emby/pending');
+    const data = await fetchPending();
+    const grouped = groupByProvider(data.pending);
     target.className = 'result-space result-card';
-    target.innerHTML = `<div class="result-toolbar"><div><strong>${data.pending_count ? `${data.pending_count} 个项目尚未进入 Emby` : '当前没有待同步项目'}</strong><div class="meta">已检查 ${data.scanned_roots} 个分类 · 云盘 ${data.cloud_titles} 项 · 已入库 ${data.present_titles} 项 · ${data.errors.length} 个目录暂不可用</div></div><span class="status ${data.pending_count ? 'planned' : 'compliant'}">${data.pending_count ? '等待手动同步' : '已同步'}</span></div>${data.pending.length ? `<div class="event-list">${data.pending.map(item => `<article class="event-item"><div><h3>${escapeHtml(item.name)}</h3><p><b class="provider-tag">${escapeHtml(item.provider)} · ${escapeHtml(item.category)}</b>${escapeHtml(item.path)}</p></div><button class="mini-button sync-pending" type="button" data-path="${escapeHtml(item.path)}">同步这一项</button></article>`).join('')}</div>` : '<div class="history-empty">云盘第一层作品目录均已存在于 Emby STRM 索引。</div>'}`;
-    $$('.sync-pending').forEach(syncButton => syncButton.addEventListener('click', () => {
-      $('#emby-path').value = syncButton.dataset.path;
-      $('#emby-form').requestSubmit();
-      $('#emby-result').scrollIntoView({behavior:'smooth', block:'center'});
+    target.innerHTML = `<div class="result-toolbar"><div><strong>${data.pending_count ? `${data.pending_count} 个项目尚未进入 Emby` : '当前没有待刷新项目'}</strong><div class="meta">已检查 ${data.scanned_roots} 个分类 · 云盘 ${data.cloud_titles} 项 · 已入库 ${data.present_titles} 项</div></div><span class="status ${data.pending_count ? 'planned' : 'compliant'}">${data.pending_count ? '待收集' : '已同步'}</span></div><div class="provider-groups">${Object.entries(grouped).map(([provider, items]) => `<section class="provider-task-group"><div class="provider-task-head"><div><strong>${escapeHtml(providerLabel(provider))}</strong><span>${items.length} 项待刷新</span></div><button class="mini-button queue-provider" type="button" data-provider="${escapeHtml(provider)}">加入本盘全部</button></div><div class="compact-task-list">${items.map(item => `<article class="compact-task-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.category)}</small></div><button class="mini-button queue-item" type="button" data-path="${escapeHtml(item.path)}">加入集合</button></article>`).join('')}</div></section>`).join('') || '<div class="history-empty">云盘作品目录均已存在于 Emby STRM 索引。</div>'}</div>`;
+    $$('.queue-item').forEach(item => item.addEventListener('click', () => {
+      const found = data.pending.find(entry => entry.path === item.dataset.path);
+      if (embyQueue.has(item.dataset.path)) embyQueue.delete(item.dataset.path);
+      else if (found) embyQueue.set(found.path, found);
+      updateEmbyQueue();
+    }));
+    $$('.queue-provider').forEach(item => item.addEventListener('click', () => addProviderToQueue(grouped[item.dataset.provider] || [])));
+    updateEmbyQueue();
+  } catch (error) { fail(target, error); }
+}
+
+async function cleanDuplicateSelection(planId, groupIds, count, label, button) {
+  if (!confirm(`${label}：将保留每集最合理的一份，其余 ${count} 项移入可恢复隔离区。是否继续？`)) return;
+  button.disabled = true;
+  try {
+    const result = await api('/api/emby/duplicates/clean', {plan_id:planId, group_ids:groupIds, confirmation:`清理 ${count} 项`});
+    toast(`已隔离 ${result.moved} 个重复 STRM`);
+    await loadEmbyDuplicates();
+  } catch (error) { toast(error.message || String(error), true); button.disabled = false; }
+}
+
+async function loadEmbyDuplicates() {
+  const target = $('#emby-duplicates');
+  loading(target, '正在按网盘和剧集汇总重复 STRM');
+  try {
+    const data = await api('/api/emby/duplicates');
+    const providers = {};
+    data.groups.forEach(group => {
+      const provider = providers[group.provider] ||= {};
+      const series = provider[group.series] ||= {series:group.series, category:group.category, ids:[], groups:0, count:0};
+      series.ids.push(group.id); series.groups += 1; series.count += group.remove.length;
+    });
+    target.className = 'result-space result-card';
+    target.innerHTML = `<div class="result-toolbar"><div><strong>${data.group_count} 组重复 STRM，涉及 ${Object.values(providers).reduce((sum, provider) => sum + Object.keys(provider).length, 0)} 部作品</strong><div class="meta">不显示冗长文件路径；预计隔离 ${data.remove_count} 项</div></div>${data.remove_count ? `<button class="mini-button danger-action clean-all-duplicates" type="button">一键删除全部重复项</button>` : '<span class="status compliant">无重复</span>'}</div><div class="provider-groups">${Object.entries(providers).map(([provider, seriesMap]) => { const series = Object.values(seriesMap); const ids = series.flatMap(item => item.ids); const count = series.reduce((sum,item) => sum + item.count, 0); return `<section class="provider-task-group"><div class="provider-task-head"><div><strong>${escapeHtml(providerLabel(provider))}</strong><span>${series.length} 部作品 · ${count} 个重复项</span></div><button class="mini-button danger-action clean-provider-duplicates" data-provider="${escapeHtml(provider)}" type="button">删除本盘重复</button></div><div class="compact-task-list">${series.map(item => `<article class="compact-task-row"><div><strong>${escapeHtml(item.series)}</strong><small>${escapeHtml(item.category)} · ${item.groups} 集重复 · 删除 ${item.count} 项</small></div><button class="mini-button danger-action clean-series-duplicates" data-provider="${escapeHtml(provider)}" data-series="${escapeHtml(item.series)}" type="button">删除本剧重复</button></article>`).join('')}</div></section>`; }).join('') || '<div class="history-empty">没有发现可确定的重复 STRM。</div>'}</div>`;
+    const allButton = $('.clean-all-duplicates');
+    if (allButton) allButton.addEventListener('click', () => cleanDuplicateSelection(data.plan_id, 'all', data.remove_count, '全部网盘', allButton));
+    $$('.clean-provider-duplicates').forEach(button => button.addEventListener('click', () => {
+      const series = Object.values(providers[button.dataset.provider]);
+      cleanDuplicateSelection(data.plan_id, series.flatMap(item => item.ids), series.reduce((sum,item) => sum + item.count, 0), providerLabel(button.dataset.provider), button);
+    }));
+    $$('.clean-series-duplicates').forEach(button => button.addEventListener('click', () => {
+      const item = providers[button.dataset.provider][button.dataset.series];
+      cleanDuplicateSelection(data.plan_id, item.ids, item.count, item.series, button);
     }));
   } catch (error) { fail(target, error); }
-  finally { button.disabled = false; }
+}
+
+async function runEmbyQueue() {
+  const button = $('#emby-run-queue');
+  button.disabled = true;
+  try {
+    const data = await api('/api/emby/refresh-queue', {paths:[...embyQueue.keys()]});
+    embyQueue.clear();
+    updateEmbyQueue();
+    toast('刷新集合已在后台严格串行启动');
+    pollJob(data.job_id);
+  } catch (error) { toast(error.message || String(error), true); updateEmbyQueue(); }
 }
 
 async function pollJob(jobId) {
   const target = $('#emby-result');
   try {
     const job = await api(`/api/jobs/${jobId}`);
+    const queued = job.type === 'emby_refresh_queue';
+    const progress = queued ? `${job.completed || 0}/${job.total || 0} 已完成${job.failed ? ` · ${job.failed} 失败` : ''}` : (job.path || '');
+    const current = queued && job.current ? `<p>当前：${escapeHtml(job.current)}</p>` : '';
     target.className = 'result-space job-card';
-    target.innerHTML = `<span class="status ${escapeHtml(job.status)}">${job.status === 'running' ? '执行中' : (job.status === 'completed' ? '已完成' : '失败')}</span><h3>${job.status === 'running' ? '正在同步并刷新 Emby' : (job.status === 'completed' ? '刷新完成' : '刷新失败')}</h3><p>${escapeHtml(job.path)}</p>${job.output ? `<pre>${escapeHtml(job.output)}</pre>` : '<p>任务在服务器后台低负载运行。</p>'}`;
+    target.innerHTML = `<span class="status ${escapeHtml(job.status)}">${job.status === 'running' ? '执行中' : (job.status === 'completed' ? '已完成' : '失败')}</span><h3>${job.status === 'running' ? '正在串行同步并刷新 Emby' : (job.status === 'completed' ? '刷新完成' : '刷新已结束，部分项目失败')}</h3><p>${escapeHtml(progress)}</p>${current}${job.output ? `<pre>${escapeHtml(job.output)}</pre>` : '<p>任务在服务器后台低负载运行，页面可以关闭。</p>'}`;
     if (job.status === 'running') setTimeout(() => pollJob(jobId), 2500);
-    else toast(job.status === 'completed' ? 'Emby 刷新完成' : 'Emby 刷新失败', job.status !== 'completed');
+    else {
+      toast(job.status === 'completed' ? 'Emby 刷新完成' : 'Emby 刷新完成，但有失败项', job.status !== 'completed');
+      loadEmbyPending();
+    }
   } catch (error) { fail(target, error); }
 }
 
@@ -403,4 +488,5 @@ applyScene();
 setInterval(applyScene, 300000);
 const initial = location.hash.slice(1);
 if (titles[initial]) switchView(initial);
+else { namerInboxLoaded = true; loadNamerInbox(); }
 checkHealth();

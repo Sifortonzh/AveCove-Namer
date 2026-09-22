@@ -403,6 +403,9 @@ class App:
             group_id = secrets.token_hex(6)
             item = {
                 "id": group_id, "label": labels[key],
+                "provider": keep.relative_to(root).parts[0],
+                "category": keep.relative_to(root).parts[2],
+                "series": keep.relative_to(root).parts[3],
                 "keep": str(keep.relative_to(root)),
                 "remove": [str(path.relative_to(root)) for path in remove],
             }
@@ -416,17 +419,23 @@ class App:
 
     def clean_emby_duplicates(self, payload: dict[str, Any]) -> dict[str, Any]:
         plan_id = str(payload.get("plan_id") or "")
-        group_id = str(payload.get("group_id") or "")
-        if not re.fullmatch(r"[0-9a-f]{16}", plan_id) or not re.fullmatch(r"[0-9a-f]{12}", group_id):
+        group_ids = payload.get("group_ids")
+        if group_ids == "all":
+            group_ids = None
+        elif not isinstance(group_ids, list):
+            legacy_group = str(payload.get("group_id") or "")
+            group_ids = [legacy_group] if legacy_group else []
+        if not re.fullmatch(r"[0-9a-f]{16}", plan_id) or (group_ids is not None and any(not re.fullmatch(r"[0-9a-f]{12}", str(value)) for value in group_ids)):
             raise ValueError("重复项清理计划无效")
         plan_path = self.settings.work_root / "duplicate-plans" / f"{plan_id}.json"
         if not plan_path.is_file():
             raise ValueError("清理计划已失效，请重新检测")
         plan = json.loads(plan_path.read_text(encoding="utf-8"))
-        group = next((item for item in plan.get("groups", []) if item.get("id") == group_id), None)
-        if not group:
+        groups = plan.get("groups", [])
+        selected = groups if group_ids is None else [item for item in groups if item.get("id") in set(group_ids)]
+        if not selected:
             raise ValueError("找不到要清理的重复组")
-        count = len(group.get("remove") or [])
+        count = sum(len(group.get("remove") or []) for group in selected)
         if str(payload.get("confirmation") or "").strip() != f"清理 {count} 项":
             raise ValueError(f"确认文字必须是：清理 {count} 项")
         root = self.settings.media_index_root.resolve()
@@ -434,7 +443,7 @@ class App:
         quarantine = Path("/opt/emby-strm/quarantine/duplicate-cleanup") / stamp
         moved = []
         affected_ids: set[int] = set()
-        for value in group["remove"]:
+        for value in [value for group in selected for value in group["remove"]]:
             source = (root / value).resolve()
             if root not in source.parents or source.suffix.casefold() != ".strm":
                 raise ValueError("检测到不安全的 STRM 路径，已停止")
@@ -866,11 +875,61 @@ class App:
             raise ValueError("服务器未配置 Emby 刷新程序")
         job_id = secrets.token_hex(8)
         with self._jobs_lock:
-            if any(job.get("type") == "emby_refresh" and job.get("status") == "running" for job in self._jobs.values()):
+            if any(job.get("type") in {"emby_refresh", "emby_refresh_queue"} and job.get("status") == "running" for job in self._jobs.values()):
                 raise ValueError("已有一个 Emby 同步任务正在运行，请完成后再同步下一项")
             self._jobs[job_id] = {"id": job_id, "type": "emby_refresh", "path": media_path, "status": "running", "started_at": utc_now()}
         threading.Thread(target=self._run_refresh, args=(job_id, media_path), daemon=True).start()
         return job_id
+
+    def start_refresh_queue(self, payload: dict[str, Any]) -> str:
+        raw_paths = payload.get("paths")
+        if not isinstance(raw_paths, list) or not raw_paths:
+            raise ValueError("请先把需要更新的项目加入刷新集合")
+        paths = list(dict.fromkeys(safe_cloud_path(value) for value in raw_paths))
+        if len(paths) > 200:
+            raise ValueError("一次最多加入 200 个项目")
+        if not self.settings.refresh_worker.is_file():
+            raise ValueError("服务器未配置 Emby 刷新程序")
+        job_id = secrets.token_hex(8)
+        with self._jobs_lock:
+            if any(job.get("type") in {"emby_refresh", "emby_refresh_queue"} and job.get("status") == "running" for job in self._jobs.values()):
+                raise ValueError("已有一个 Emby 同步任务正在运行，请完成后再启动队列")
+            self._jobs[job_id] = {
+                "id": job_id, "type": "emby_refresh_queue", "paths": paths,
+                "status": "running", "started_at": utc_now(), "total": len(paths),
+                "completed": 0, "failed": 0, "current": paths[0], "output": "",
+            }
+        threading.Thread(target=self._run_refresh_queue, args=(job_id, paths), daemon=True).start()
+        return job_id
+
+    def _run_refresh_queue(self, job_id: str, paths: list[str]) -> None:
+        env = {**os.environ, "REFRESH_CPU_LIMIT": "0.35", "REFRESH_ALLOW_CONTAINERS": "__none__", "REFRESH_PRESERVE_IMAGES": "1", "REFRESH_PRESERVE_SIDECARS": "1"}
+        completed = failed = 0
+        summaries = []
+        for index, media_path in enumerate(paths, 1):
+            with self._jobs_lock:
+                self._jobs[job_id].update({"current": media_path, "current_index": index})
+            try:
+                result = subprocess.run(
+                    [str(self.settings.refresh_worker), "--prefix", media_path], check=False,
+                    capture_output=True, text=True, timeout=45 * 60, env=env,
+                )
+                if result.returncode == 0:
+                    completed += 1
+                    summaries.append(f"[{index}/{len(paths)}] 完成：{media_path}")
+                else:
+                    failed += 1
+                    summaries.append(f"[{index}/{len(paths)}] 失败：{media_path}")
+            except Exception as exc:
+                failed += 1
+                summaries.append(f"[{index}/{len(paths)}] 失败：{media_path} · {exc}")
+            with self._jobs_lock:
+                self._jobs[job_id].update({"completed": completed, "failed": failed, "output": "\n".join(summaries[-30:])})
+        with self._jobs_lock:
+            self._jobs[job_id].update({
+                "status": "completed" if failed == 0 else "failed", "completed": completed,
+                "failed": failed, "current": None, "finished_at": utc_now(),
+            })
 
     def _run_refresh(self, job_id: str, media_path: str) -> None:
         env = {**os.environ, "REFRESH_CPU_LIMIT": "0.35", "REFRESH_ALLOW_CONTAINERS": "__none__", "REFRESH_PRESERVE_IMAGES": "1", "REFRESH_PRESERVE_SIDECARS": "1"}
@@ -1007,6 +1066,7 @@ def handler_factory(app: App):
                     "/api/namer/identify": app.identify_path,
                     "/api/namer/apply": app.apply_plan,
                     "/api/emby/refresh": lambda payload: {"job_id": app.start_refresh(payload.get("path"))},
+                    "/api/emby/refresh-queue": lambda payload: {"job_id": app.start_refresh_queue(payload)},
                     "/api/emby/duplicates/clean": app.clean_emby_duplicates,
                     "/api/watch/recommendations": app.watch_recommendations,
                 }

@@ -61,7 +61,8 @@
       </section>
 
       <section class="view active" id="view-namer">
-        <div class="section-head"><div><h2>Namer 改名</h2><p>输入路径后自动识别 TMDb；确认作品信息，再生成只读预览。</p></div><span class="safe-badge">识别阶段不改文件</span></div>
+        <div class="section-head"><div><h2>Namer 新资源工作台</h2><p>自动发现新入库资源，点击即可识别、预览和改名，完成后衔接 Emby 刷新。</p></div><div class="section-actions"><button class="secondary" id="namer-inbox-reload" type="button">检测新资源</button><span class="safe-badge">检测阶段不改文件</span></div></div>
+        <div id="namer-inbox" class="inbox-panel"><div class="history-empty">正在检测新入库资源…</div></div>
         <div class="path-presets grouped-presets namer-presets" id="namer-presets" aria-label="Namer 常用路径"></div>
         <form class="form-card" id="namer-form">
           <label class="wide"><span>OpenList 媒体路径</span><input id="namer-path" placeholder="/115/00剧/01美/Modern Family" required></label>
@@ -82,20 +83,16 @@
       </section>
 
       <section class="view" id="view-emby">
-        <div class="section-head"><div><h2>Emby 定向刷新</h2><p>自动找出未入库项目与重复 STRM，再逐项低负载处理。</p></div><div class="section-actions"><button class="secondary" id="emby-duplicates-detect" type="button">检测重复 STRM</button><button class="secondary" id="emby-detect" type="button">检测待同步项目</button></div></div>
-        <div id="emby-duplicates" class="result-space empty-state"><span class="empty-icon">≋</span><p>重复检测只生成预览，确认后移入可恢复隔离区</p></div>
-        <div id="emby-pending" class="result-space empty-state"><span class="empty-icon">◎</span><p>进入页面后将自动进行一次浅层检测</p></div>
-        <div class="path-presets grouped-presets emby-presets" id="emby-presets" aria-label="Emby 刷新常用路径"></div>
-        <form class="command-bar" id="emby-form">
-          <label class="grow"><span>OpenList 媒体路径</span><input id="emby-path" placeholder="/GuangYa/00剧/01美/Game of Thrones (2011)" required></label>
-          <button class="primary" type="submit">开始刷新</button>
-        </form>
-        <div class="notice">刷新在服务器后台低负载运行；页面可以关闭，不会中断任务。</div>
-        <div id="emby-result" class="result-space empty-state"><span class="empty-icon">↻</span><p>输入一个具体的作品或分类路径</p></div>
+        <div class="section-head"><div><h2>Emby 网盘任务中心</h2><p>自动按网盘汇总待入库项目和重复剧集，再串行低负载处理。</p></div><div class="section-actions"><button class="secondary" id="emby-reload-all" type="button">重新检测</button></div></div>
+        <div class="queue-toolbar"><div><strong>刷新集合</strong><span id="emby-queue-count">尚未选择项目</span></div><button class="primary" id="emby-run-queue" type="button" disabled>一键陆续刷新</button></div>
+        <div id="emby-pending" class="result-space empty-state"><span class="empty-icon">◎</span><p>正在按网盘收集待刷新的项目</p></div>
+        <div id="emby-duplicates" class="result-space empty-state"><span class="empty-icon">≋</span><p>正在按网盘汇总重复剧集</p></div>
+        <div class="notice">刷新集合严格串行，一次只处理一个作品；重复 STRM 先确认，再移入可恢复隔离区。</div>
+        <div id="emby-result" class="result-space empty-state"><span class="empty-icon">↻</span><p>等待执行任务</p></div>
       </section>
     </main>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=guided-11" defer></script>
+  <script src="app.js?v=guided-13" defer></script>
 </body>
 </html>

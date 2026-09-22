@@ -121,6 +121,8 @@ class WebAppTests(unittest.TestCase):
             result = App(settings).emby_duplicates()
             self.assertEqual(result["group_count"], 1)
             self.assertEqual(result["remove_count"], 1)
+            self.assertEqual(result["groups"][0]["provider"], "123")
+            self.assertEqual(result["groups"][0]["series"], "Show (2020)")
             self.assertTrue(first.is_file())
             self.assertTrue(second.is_file())
 
