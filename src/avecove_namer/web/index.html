@@ -13,7 +13,7 @@
       document.documentElement.dataset.scene = hour < 5 || hour >= 21 ? 'night' : hour < 11 ? 'morning' : hour < 17 ? 'day' : 'evening';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=guided-9">
+  <link rel="stylesheet" href="styles.css?v=guided-14">
 </head>
 <body>
   <div class="shell">
@@ -61,17 +61,20 @@
       </section>
 
       <section class="view active" id="view-namer">
-        <div class="section-head"><div><h2>Namer 新资源工作台</h2><p>自动发现新入库资源，点击即可识别、预览和改名，完成后衔接 Emby 刷新。</p></div><div class="section-actions"><button class="secondary" id="namer-inbox-reload" type="button">检测新资源</button><span class="safe-badge">检测阶段不改文件</span></div></div>
+        <div class="section-head"><div><span class="page-kicker">LIBRARY INBOX</span><h2>Namer 新资源工作台</h2><p>从入库检测、TMDb 识别到 Emby 刷新，一条流程完成。</p></div><div class="section-actions"><span class="safe-badge">只读检测</span><button class="secondary" id="namer-inbox-reload" type="button">重新检测</button></div></div>
         <div id="namer-inbox" class="inbox-panel"><div class="history-empty">正在检测新入库资源…</div></div>
-        <div class="path-presets grouped-presets namer-presets" id="namer-presets" aria-label="Namer 常用路径"></div>
-        <form class="form-card" id="namer-form">
-          <label class="wide"><span>OpenList 媒体路径</span><input id="namer-path" placeholder="/115/00剧/01美/Modern Family" required></label>
-          <label><span>类型</span><select id="namer-kind"><option value="tv">剧集</option><option value="movie">电影</option></select></label>
-          <label><span>标题方式</span><select id="namer-style"><option value="auto">自动</option><option value="original">原名</option><option value="english">英文</option><option value="chinese">中文</option><option value="bilingual">双语</option></select></label>
-          <details class="advanced-id"><summary>高级</summary><label><span>手动 TMDb ID（可选）</span><input id="namer-id" inputmode="numeric" placeholder="自动识别失败时填写"></label></details>
-          <button class="primary align-end" type="submit">自动识别</button>
-          <label class="check-field source-parent-option"><input id="namer-source-parent" type="checkbox"><span>父目录使用 TMDb 源数据名称（子文件仍使用英文名称）</span></label>
-        </form>
+        <div class="workflow-divider"><span>MANUAL WORKBENCH</span><small>或手动指定目录</small></div>
+        <div class="manual-workbench">
+          <div class="path-presets grouped-presets namer-presets" id="namer-presets" aria-label="Namer 常用路径"></div>
+          <form class="form-card" id="namer-form">
+            <label class="wide"><span>OpenList 媒体路径</span><input id="namer-path" placeholder="/115/00剧/01美/Modern Family" required></label>
+            <label><span>类型</span><select id="namer-kind"><option value="tv">剧集</option><option value="movie">电影</option></select></label>
+            <label><span>标题方式</span><select id="namer-style"><option value="auto">自动</option><option value="original">原名</option><option value="english">英文</option><option value="chinese">中文</option><option value="bilingual">双语</option></select></label>
+            <details class="advanced-id"><summary>高级</summary><label><span>手动 TMDb ID（可选）</span><input id="namer-id" inputmode="numeric" placeholder="自动识别失败时填写"></label></details>
+            <button class="primary align-end" type="submit">自动识别</button>
+            <label class="check-field source-parent-option"><input id="namer-source-parent" type="checkbox"><span>父目录使用 TMDb 源数据名称（子文件仍使用英文名称）</span></label>
+          </form>
+        </div>
         <div id="namer-result" class="result-space empty-state"><span class="empty-icon">✦</span><p>输入具体作品路径，先识别再预览</p></div>
       </section>
 
@@ -93,6 +96,6 @@
     </main>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=guided-13" defer></script>
+  <script src="app.js?v=guided-14" defer></script>
 </body>
 </html>
