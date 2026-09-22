@@ -357,6 +357,32 @@ class App:
             "errors": errors,
         }
 
+    def emby_residuals(self) -> dict[str, Any]:
+        """Find Emby series or movies whose local STRM path no longer exists."""
+        data = self._emby_get("/Items", {
+            "Recursive": "true", "IncludeItemTypes": "Series,Movie",
+            "Fields": "Path", "Limit": 5000,
+        })
+        items: list[dict[str, str]] = []
+        marker = "/openlist-local-tree/"
+        for item in data.get("Items", []) if isinstance(data, dict) else []:
+            emby_path = str(item.get("Path") or "")
+            if marker not in emby_path:
+                continue
+            relative = emby_path.split(marker, 1)[1].strip("/")
+            local_path = self.settings.media_index_root / relative
+            item_type = str(item.get("Type") or "")
+            exists = local_path.is_file() if item_type == "Movie" else local_path.is_dir() and any(local_path.rglob("*.strm"))
+            if exists:
+                continue
+            parts = PurePosixPath(relative).parts
+            items.append({
+                "id": str(item.get("Id") or ""), "name": str(item.get("Name") or PurePosixPath(relative).name),
+                "type": item_type, "provider": parts[0] if parts else "其他", "path": "/" + relative,
+            })
+        items.sort(key=lambda item: (item["provider"].casefold(), item["name"].casefold()))
+        return {"count": len(items), "items": items}
+
     def _strm_identity(self, relative: Path) -> tuple[str, str] | None:
         if len(relative.parts) < 4:
             return None
@@ -1048,6 +1074,9 @@ def handler_factory(app: App):
                     return
                 if path == "/api/emby/pending":
                     self.json_response(HTTPStatus.OK, app.emby_pending())
+                    return
+                if path == "/api/emby/residuals":
+                    self.json_response(HTTPStatus.OK, app.emby_residuals())
                     return
                 if path == "/api/emby/duplicates":
                     self.json_response(HTTPStatus.OK, app.emby_duplicates())

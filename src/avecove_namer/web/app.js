@@ -388,9 +388,21 @@ async function loadEmbyCenter() {
   button.disabled = true;
   button.textContent = '正在检测…';
   await loadEmbyPending();
+  await loadEmbyResiduals();
   await loadEmbyDuplicates();
   button.disabled = false;
   button.textContent = '重新检测';
+}
+
+async function loadEmbyResiduals() {
+  const target = $('#emby-residuals');
+  loading(target, '正在核对 Emby 条目与本地 STRM 索引');
+  try {
+    const data = await api('/api/emby/residuals');
+    const grouped = groupByProvider(data.items);
+    target.className = 'result-space result-card';
+    target.innerHTML = `<div class="result-toolbar"><div><strong>${data.count ? `${data.count} 个 Emby 残留项目` : '没有发现 Emby 残留'}</strong><div class="meta">云盘或 STRM 已不存在，但 Emby 数据库仍保留的作品</div></div><span class="status ${data.count ? 'failed' : 'compliant'}">${data.count ? '建议删除' : '正常'}</span></div><div class="provider-groups">${Object.entries(grouped).map(([provider, items]) => `<section class="provider-task-group"><div class="provider-task-head"><div><strong>${escapeHtml(providerLabel(provider))}</strong><span>${items.length} 项残留</span></div></div><div class="compact-task-list">${items.map(item => `<article class="compact-task-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.type === 'Series' ? '剧集' : '电影')} · Emby ID ${escapeHtml(item.id)}</small></div><span class="status failed">待删除</span></article>`).join('')}</div></section>`).join('') || '<div class="history-empty">Emby 数据库与当前 STRM 索引一致。</div>'}</div>`;
+  } catch (error) { fail(target, error); }
 }
 
 async function loadEmbyPending() {

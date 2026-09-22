@@ -89,6 +89,7 @@
         <div class="section-head"><div><h2>Emby 网盘任务中心</h2><p>自动按网盘汇总待入库项目和重复剧集，再串行低负载处理。</p></div><div class="section-actions"><button class="secondary" id="emby-reload-all" type="button">重新检测</button></div></div>
         <div class="queue-toolbar"><div><strong>刷新集合</strong><span id="emby-queue-count">尚未选择项目</span></div><button class="primary" id="emby-run-queue" type="button" disabled>一键陆续刷新</button></div>
         <div id="emby-pending" class="result-space empty-state"><span class="empty-icon">◎</span><p>正在按网盘收集待刷新的项目</p></div>
+        <div id="emby-residuals" class="result-space empty-state"><span class="empty-icon">◌</span><p>正在检查 Emby 数据库残留</p></div>
         <div id="emby-duplicates" class="result-space empty-state"><span class="empty-icon">≋</span><p>正在按网盘汇总重复剧集</p></div>
         <div class="notice">刷新集合严格串行，一次只处理一个作品；重复 STRM 先确认，再移入可恢复隔离区。</div>
         <div id="emby-result" class="result-space empty-state"><span class="empty-icon">↻</span><p>等待执行任务</p></div>
@@ -96,6 +97,6 @@
     </main>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=guided-15" defer></script>
+  <script src="app.js?v=guided-16" defer></script>
 </body>
 </html>
