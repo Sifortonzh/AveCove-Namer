@@ -346,14 +346,17 @@ async function loadNamerInbox() {
   const target = $('#namer-inbox');
   const button = $('#namer-inbox-reload');
   button.disabled = true;
-  target.innerHTML = '<div class="history-empty">正在浅层检测新入库资源，不读取视频内容…</div>';
+  target.className = 'inbox-loading-wrap';
+  target.innerHTML = '<div class="inbox-loading-card"><span></span><div><strong>正在检测新资源</strong><small>只读浅层检查，不读取视频</small></div></div>';
   try {
     const data = await fetchPending();
     const grouped = groupByProvider(data.pending);
+    target.className = 'inbox-panel';
     const providerSummary = Object.entries(grouped).map(([provider, items]) => `<span><b>${escapeHtml(providerLabel(provider))}</b>${items.length}</span>`).join('');
     target.innerHTML = `<div class="inbox-heading"><div class="inbox-title"><span class="inbox-orb">✦</span><div><strong>新入库待整理</strong><span>点击作品，自动带入 Namer 识别</span></div></div><div class="inbox-total"><b>${data.pending_count}</b><span>待处理</span></div></div><div class="provider-summary">${providerSummary || '<span><b>已清空</b>0</span>'}</div>${Object.entries(grouped).length ? `<div class="inbox-body">${Object.entries(grouped).map(([provider, items]) => `<section class="provider-task-group"><div class="provider-task-head"><div><strong>${escapeHtml(providerLabel(provider))}</strong><span>${items.length} 项待处理</span></div><span class="provider-index">${String(items.length).padStart(2,'0')}</span></div><div class="compact-task-list">${items.map(item => `<button class="compact-task namer-inbox-item" type="button" data-path="${escapeHtml(item.path)}" data-category="${escapeHtml(item.category)}"><span>${escapeHtml(item.name)}</span><small>${escapeHtml(item.category)}<i>开始识别 →</i></small></button>`).join('')}</div></section>`).join('')}</div>` : '<div class="history-empty inbox-empty">没有发现新入库项目。</div>'}`;
     $$('.namer-inbox-item').forEach(item => item.addEventListener('click', () => beginNamerForPath(item.dataset.path, item.dataset.category)));
   } catch (error) {
+    target.className = 'inbox-loading-wrap';
     target.innerHTML = `<div class="history-empty">检测失败：${escapeHtml(error.message || error)}</div>`;
     toast(error.message || String(error), true);
   } finally { button.disabled = false; }

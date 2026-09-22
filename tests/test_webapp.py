@@ -102,6 +102,31 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(result["pending_count"], 1)
             self.assertEqual(result["pending"][0]["path"], "/115/00剧/01美/New Show (2026)")
 
+    def test_emby_pending_matches_korean_and_english_folders_by_tmdb_id(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            class Backend:
+                def list_directories(self, path, refresh=False):
+                    if path == "/115/00剧/01韩":
+                        return [{"name": "대장금 (2003) {tmdb=333}"}]
+                    return []
+
+            local = root / "media/115/00剧/01韩/Jewel in the Palace (2003) {tmdb=333}"
+            local.mkdir(parents=True)
+            (local / "Jewel.in.the.Palace.2003.S01E01.strm").write_text("https://example.invalid/video", encoding="utf-8")
+            settings = Settings(
+                host="127.0.0.1", port=8787, openlist_url="http://127.0.0.1:5245",
+                openlist_token_file=root / "openlist.token", tmdb_token_file=root / "tmdb.token",
+                work_root=root / "jobs", detective_summary=root / "summary.json",
+                refresh_worker=root / "refresh.py", media_index_root=root / "media",
+            )
+            app = App(settings)
+            app.openlist = lambda: Backend()
+            result = app.emby_pending()
+            self.assertEqual(result["pending_count"], 0)
+            self.assertEqual(result["present_titles"], 1)
+
     def test_emby_duplicate_plan_keeps_one_episode_and_only_previews_cleanup(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -145,3 +170,23 @@ class WebAppTests(unittest.TestCase):
             result = App(settings).emby_duplicates()
             self.assertIn("Season 01", result["groups"][0]["keep"])
             self.assertIn("Season 04", result["groups"][0]["remove"][0])
+
+    def test_emby_duplicate_plan_groups_different_language_titles_by_tmdb_id(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            media = root / "media"
+            korean = media / "115/00剧/01韩/대장금 (2003) {tmdb=333}/Season 01/Dae.Jang.Geum.2003.S01E01.strm"
+            english = media / "115/00剧/01韩/Jewel in the Palace (2003) {tmdb=333}/Season 01/Jewel.in.the.Palace.2003.S01E01.strm"
+            korean.parent.mkdir(parents=True)
+            english.parent.mkdir(parents=True)
+            korean.write_text("same-url", encoding="utf-8")
+            english.write_text("same-url", encoding="utf-8")
+            settings = Settings(
+                host="127.0.0.1", port=8787, openlist_url="http://127.0.0.1:5245",
+                openlist_token_file=root / "openlist.token", tmdb_token_file=root / "tmdb.token",
+                work_root=root / "jobs", detective_summary=root / "summary.json",
+                refresh_worker=root / "refresh.py", media_index_root=media,
+            )
+            result = App(settings).emby_duplicates()
+            self.assertEqual(result["group_count"], 1)
+            self.assertEqual(result["remove_count"], 1)

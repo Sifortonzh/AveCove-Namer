@@ -62,7 +62,7 @@
 
       <section class="view active" id="view-namer">
         <div class="section-head"><div><span class="page-kicker">LIBRARY INBOX</span><h2>Namer 新资源工作台</h2><p>从入库检测、TMDb 识别到 Emby 刷新，一条流程完成。</p></div><div class="section-actions"><span class="safe-badge">只读检测</span><button class="secondary" id="namer-inbox-reload" type="button">重新检测</button></div></div>
-        <div id="namer-inbox" class="inbox-panel"><div class="history-empty">正在检测新入库资源…</div></div>
+        <div id="namer-inbox" class="inbox-loading-wrap"><div class="inbox-loading-card"><span></span><div><strong>正在检测新资源</strong><small>只读浅层检查，不读取视频</small></div></div></div>
         <div class="workflow-divider"><span>MANUAL WORKBENCH</span><small>或手动指定目录</small></div>
         <div class="manual-workbench">
           <div class="path-presets grouped-presets namer-presets" id="namer-presets" aria-label="Namer 常用路径"></div>
@@ -96,6 +96,6 @@
     </main>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=guided-14" defer></script>
+  <script src="app.js?v=guided-15" defer></script>
 </body>
 </html>

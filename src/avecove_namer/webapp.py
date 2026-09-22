@@ -88,6 +88,11 @@ def normalized_media_name(value: object) -> str:
     return "".join(character for character in text.casefold() if character.isalnum())
 
 
+def media_tmdb_id(value: object) -> str | None:
+    match = re.search(r"\{\s*tmdb\s*=\s*(\d+)\s*\}", str(value or ""), flags=re.IGNORECASE)
+    return match.group(1) if match else None
+
+
 def normalized_lookup_query(value: object) -> tuple[str, int | None]:
     """Turn copied release/folder names into a TMDb-friendly title and year."""
     raw = str(value or "").strip()
@@ -311,13 +316,26 @@ class App:
                 continue
             scanned_roots += 1
             local_root = self.settings.media_index_root / root.lstrip("/")
+            local_tmdb_ids: set[str] = set()
+            local_names: set[str] = set()
+            if local_root.is_dir():
+                for local_title in local_root.iterdir():
+                    if not local_title.is_dir() or not any(local_title.rglob("*.strm")):
+                        continue
+                    tmdb_id = media_tmdb_id(local_title.name)
+                    if tmdb_id:
+                        local_tmdb_ids.add(tmdb_id)
+                    normalized = normalized_media_name(local_title.name)
+                    if normalized:
+                        local_names.add(normalized)
             for item in directories:
                 name = str(item.get("name") or "").strip()
                 if not name:
                     continue
                 cloud_titles += 1
-                local_path = local_root / name
-                if local_path.is_dir() and any(local_path.rglob("*.strm")):
+                tmdb_id = media_tmdb_id(name)
+                normalized = normalized_media_name(name)
+                if (tmdb_id and tmdb_id in local_tmdb_ids) or (normalized and normalized in local_names):
                     present_titles += 1
                     continue
                 path = str(PurePosixPath(root) / name)
@@ -358,13 +376,15 @@ class App:
             kind = "movie"
         if not match:
             return None
-        title = normalized_media_name(match.group("title"))
+        tmdb_id = next((media_tmdb_id(part) for part in relative.parts[3:] if media_tmdb_id(part)), None)
+        title = f"tmdb:{tmdb_id}" if tmdb_id else normalized_media_name(match.group("title"))
         year = match.group("year")
         if not title:
             return None
         category = "/".join(relative.parts[:3])
         key = f"{category}|{kind}|{title}|{year}|{suffix}"
-        label = f"{match.group('title').replace('.', ' ')} ({year})" + (f" · {suffix}" if suffix else "")
+        series_name = relative.parts[3] if tmdb_id else f"{match.group('title').replace('.', ' ')} ({year})"
+        label = series_name + (f" · {suffix}" if suffix else "")
         return key, label
 
     def emby_duplicates(self) -> dict[str, Any]:
@@ -396,7 +416,11 @@ class App:
                     if match:
                         folder_seasons.append(int(match.group(1)))
                 correct_season = int(expected_season is None or expected_season in folder_seasons or not folder_seasons)
-                parent_match = max((int(title_key in normalized_media_name(part)) for part in path.parts[:-1]), default=0)
+                if title_key.startswith("tmdb:"):
+                    expected_tmdb = title_key.split(":", 1)[1]
+                    parent_match = max((int(media_tmdb_id(part) == expected_tmdb) for part in path.parts[:-1]), default=0)
+                else:
+                    parent_match = max((int(title_key in normalized_media_name(part)) for part in path.parts[:-1]), default=0)
                 return correct_season, parent_match, path.stat().st_mtime_ns, str(path)
             keep = max(paths, key=priority)
             remove = sorted((path for path in paths if path != keep), key=str)
