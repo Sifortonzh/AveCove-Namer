@@ -60,6 +60,31 @@ class PlannerTests(unittest.TestCase):
         )
         self.assertEqual(subtitle.source, f"{release}/字幕/01.ass")
 
+    def test_multiple_same_language_subtitles_get_unique_emby_names(self):
+        root = "/115/Outlander (2014)"
+        season = f"{root}/Outlander.S02.2160p.NF.WEBRip"
+        video = f"{season}/Outlander.2014.S02E01.2160p.NF.WEBRip.mkv"
+        entries = [
+            Entry(video, size=100),
+            Entry(f"{season}/Outlander.2014.S02E01.2160p.NF.WEBRip.zh-CN.srt", size=10),
+            Entry(f"{season}/Outlander.S02E01.Through.A.Glass.Darkly.srt", size=11),
+            Entry(f"{season}/Outlander.S02E01.Through.A.Glass.Darkly(1).srt", size=12),
+        ]
+        plan = make_plan(entries, root, "openlist", NamingPolicy(), "Outlander", 2014, False, media_kind="tv")
+        self.assertFalse(plan.conflicts)
+        subtitle_targets = sorted(
+            PurePosixPath(operation.target).name
+            for operation in plan.operations
+            if operation.kind == "rename_subtitle"
+        )
+        self.assertEqual(
+            subtitle_targets,
+            [
+                "Outlander.2014.S02E01.2160p.NF.WEBRip.alt-1.zh-CN.srt",
+                "Outlander.2014.S02E01.2160p.NF.WEBRip.alt-2.zh-CN.srt",
+            ],
+        )
+
     def test_missing_episode_year_is_skipped(self):
         root = "/TV/Unknown Show/Season 01"
         entries = [Entry(f"{root}/Unknown.Show.S01E01.1080p.WEB-DL.mkv")]

@@ -19,6 +19,7 @@ from .naming import (
     extension_of,
     infer_context,
     parse_media_name,
+    subtitle_language_suffix,
 )
 
 
@@ -63,6 +64,29 @@ def _subtitle_episode_key(entry: Entry) -> tuple[int, int] | None:
         if match:
             return int(match.group(1)), episode
     return None
+
+
+def _subtitle_matches_video_target(subtitle_name: str, video_target: str) -> bool:
+    """Return true for an already compliant external subtitle, including alt variants."""
+    subtitle_extension = extension_of(subtitle_name)
+    video_name = PurePosixPath(video_target).name
+    video_extension = extension_of(video_name)
+    video_stem = video_name[: -len(video_extension)]
+    subtitle_stem = subtitle_name[: -len(subtitle_extension)]
+    if not subtitle_stem.startswith(f"{video_stem}."):
+        return False
+    return bool(subtitle_language_suffix(subtitle_name, ""))
+
+
+def _subtitle_variant_target(base_target: str, language: str, variant: int) -> str:
+    """Keep Emby language detection while giving same-language subtitles unique names."""
+    target_path = PurePosixPath(base_target)
+    extension = extension_of(target_path.name)
+    stem = target_path.name[: -len(extension)]
+    language_suffix = f".{language}"
+    if stem.endswith(language_suffix):
+        stem = stem[: -len(language_suffix)]
+    return str(target_path.parent / f"{stem}.alt-{variant}.{language}{extension}")
 
 
 def make_plan(
@@ -158,6 +182,7 @@ def make_plan(
                     )
                 )
 
+    allocated_subtitle_targets: set[str] = set()
     for parent, siblings in by_parent.items():
         for entry in siblings:
             extension = extension_of(entry.name)
@@ -174,17 +199,32 @@ def make_plan(
             if not video_target:
                 plan.skipped.append({"path": entry.path, "reason": "subtitle_video_pair_ambiguous"})
                 continue
+            if _subtitle_matches_video_target(entry.name, video_target):
+                plan.skipped.append({"path": entry.path, "reason": "subtitle_already_compliant"})
+                allocated_subtitle_targets.add(entry.path)
+                continue
             target_name = build_subtitle_name(PurePosixPath(video_target).name, entry.name, policy)
             target = str(PurePosixPath(video_target).parent / target_name)
             if target == entry.path:
                 plan.skipped.append({"path": entry.path, "reason": "subtitle_already_compliant"})
+                allocated_subtitle_targets.add(target)
                 continue
+            language = subtitle_language_suffix(entry.name, policy.subtitle_language_default)
+            variant = 1
+            while (target in allocated_subtitle_targets or target in known_paths) and target != entry.path:
+                target = _subtitle_variant_target(
+                    str(PurePosixPath(video_target).parent / target_name),
+                    language,
+                    variant,
+                )
+                variant += 1
+            allocated_subtitle_targets.add(target)
             plan.operations.append(
                 RenameOperation(
                     source=entry.path,
                     target=target,
                     kind="rename_subtitle",
-                    reason="paired_subtitle",
+                    reason="paired_subtitle_variant" if variant > 1 else "paired_subtitle",
                     confidence=0.98,
                     source_size=entry.size,
                     source_modified=entry.modified,
