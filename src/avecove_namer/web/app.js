@@ -335,9 +335,9 @@ async function fetchPending() {
   return api('/api/emby/pending');
 }
 
-function beginNamerForPath(path, category) {
+function beginNamerForPath(path, kind) {
   $('#namer-path').value = path;
-  $('#namer-kind').value = category === '00影' ? 'movie' : 'tv';
+  $('#namer-kind').value = kind === 'movie' ? 'movie' : 'tv';
   $('#namer-form').requestSubmit();
   $('#namer-result').scrollIntoView({behavior:'smooth', block:'center'});
 }
@@ -353,8 +353,8 @@ async function loadNamerInbox() {
     const grouped = groupByProvider(data.pending);
     target.className = 'inbox-panel';
     const providerSummary = Object.entries(grouped).map(([provider, items]) => `<span><b>${escapeHtml(providerLabel(provider))}</b>${items.length}</span>`).join('');
-    target.innerHTML = `<div class="inbox-heading"><div class="inbox-title"><span class="inbox-orb">✦</span><div><strong>新入库待整理</strong><span>点击作品，自动带入 Namer 识别</span></div></div><div class="inbox-total"><b>${data.pending_count}</b><span>待处理</span></div></div><div class="provider-summary">${providerSummary || '<span><b>已清空</b>0</span>'}</div>${Object.entries(grouped).length ? `<div class="inbox-body">${Object.entries(grouped).map(([provider, items]) => `<section class="provider-task-group"><div class="provider-task-head"><div><strong>${escapeHtml(providerLabel(provider))}</strong><span>${items.length} 项待处理</span></div><span class="provider-index">${String(items.length).padStart(2,'0')}</span></div><div class="compact-task-list">${items.map(item => `<button class="compact-task namer-inbox-item" type="button" data-path="${escapeHtml(item.path)}" data-category="${escapeHtml(item.category)}"><span>${escapeHtml(item.name)}</span><small>${escapeHtml(item.category)}<i>开始识别 →</i></small></button>`).join('')}</div></section>`).join('')}</div>` : '<div class="history-empty inbox-empty">没有发现新入库项目。</div>'}`;
-    $$('.namer-inbox-item').forEach(item => item.addEventListener('click', () => beginNamerForPath(item.dataset.path, item.dataset.category)));
+    target.innerHTML = `<div class="inbox-heading"><div class="inbox-title"><span class="inbox-orb">✦</span><div><strong>新入库待整理</strong><span>点击作品，自动带入 Namer 识别</span></div></div><div class="inbox-total"><b>${data.pending_count}</b><span>待处理</span></div></div><div class="provider-summary">${providerSummary || '<span><b>已清空</b>0</span>'}</div>${Object.entries(grouped).length ? `<div class="inbox-body">${Object.entries(grouped).map(([provider, items]) => `<section class="provider-task-group"><div class="provider-task-head"><div><strong>${escapeHtml(providerLabel(provider))}</strong><span>${items.length} 项待处理</span></div><span class="provider-index">${String(items.length).padStart(2,'0')}</span></div><div class="compact-task-list">${items.map(item => `<button class="compact-task namer-inbox-item" type="button" data-path="${escapeHtml(item.path)}" data-kind="${escapeHtml(item.kind)}"><span>${escapeHtml(item.name)}</span><small>${item.kind === 'movie' ? '电影' : '剧集'} · ${escapeHtml(item.category)}<i>开始识别 →</i></small></button>`).join('')}</div></section>`).join('')}</div>` : '<div class="history-empty inbox-empty">没有发现新入库项目。</div>'}`;
+    $$('.namer-inbox-item').forEach(item => item.addEventListener('click', () => beginNamerForPath(item.dataset.path, item.dataset.kind)));
   } catch (error) {
     target.className = 'inbox-loading-wrap';
     target.innerHTML = `<div class="history-empty">检测失败：${escapeHtml(error.message || error)}</div>`;

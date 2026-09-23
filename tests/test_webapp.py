@@ -127,6 +127,27 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(result["pending_count"], 0)
             self.assertEqual(result["present_titles"], 1)
 
+    def test_emby_pending_marks_movie_roots_for_movie_identification(self):
+        class Backend:
+            def list_directories(self, root, refresh=False):
+                if root == "/115/00影/01外":
+                    return [{"name": "Unsorted Movie 2026"}]
+                return []
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            settings = Settings(
+                host="127.0.0.1", port=8787, openlist_url="http://127.0.0.1:5245",
+                openlist_token_file=root / "openlist.token", tmdb_token_file=root / "tmdb.token",
+                work_root=root / "jobs", detective_summary=root / "summary.json",
+                refresh_worker=root / "refresh.py", media_index_root=root / "media",
+            )
+            app = App(settings)
+            app.openlist = lambda: Backend()
+            result = app.emby_pending()
+            movie = next(item for item in result["pending"] if item["path"].startswith("/115/00影/01外/"))
+            self.assertEqual(movie["kind"], "movie")
+
     def test_emby_duplicate_plan_keeps_one_episode_and_only_previews_cleanup(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

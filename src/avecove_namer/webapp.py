@@ -315,6 +315,7 @@ class App:
                 errors.append({"root": root, "error": str(exc)})
                 continue
             scanned_roots += 1
+            media_kind = "movie" if root in CLOUD_LIBRARY_ROOTS["movie"] else "tv"
             local_root = self.settings.media_index_root / root.lstrip("/")
             local_tmdb_ids: set[str] = set()
             local_names: set[str] = set()
@@ -342,6 +343,7 @@ class App:
                 pending.append({
                     "provider": PurePosixPath(root).parts[1],
                     "category": PurePosixPath(root).name,
+                    "kind": media_kind,
                     "name": name,
                     "path": path,
                 })
