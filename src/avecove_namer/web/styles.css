@@ -241,6 +241,9 @@ td.overview { min-width: 380px; color: #b0b6c1; }
 .compact-task::before { position:absolute; top:14px; left:0; width:2px; height:18px; border-radius:0 2px 2px 0; content:""; background:transparent; }
 .compact-task:hover { border-color:color-mix(in srgb,var(--accent) 55%,var(--line)); box-shadow:0 9px 24px rgb(42 61 79 / .08); transform:translateY(-1px); }
 .compact-task:hover::before { background:var(--accent); }
+.namer-inbox-item.selected { border-color:color-mix(in srgb,var(--good) 52%,var(--line)); background:color-mix(in srgb,var(--good) 8%,var(--surface)); box-shadow:0 8px 22px color-mix(in srgb,var(--good) 12%,transparent); }
+.namer-inbox-item.selected::before { background:var(--good); }
+.namer-inbox-item.selected small i { color:var(--good); opacity:1; transform:none; }
 .compact-task span, .compact-task-row strong { display:block; overflow:hidden; font-size:12px; font-weight:650; text-overflow:ellipsis; white-space:nowrap; }
 .compact-task small, .compact-task-row small { display:flex; justify-content:space-between; gap:10px; margin-top:6px; color:var(--muted); font-size:10px; font-style:normal; }
 .compact-task small i { color:var(--accent-2); font-style:normal; opacity:0; transform:translateX(-4px); transition:.18s ease; }

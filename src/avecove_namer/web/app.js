@@ -6,6 +6,9 @@ let lastSourceData = null;
 let embyPendingLoaded = false;
 let namerInboxLoaded = false;
 const embyQueue = new Map();
+const namerQueue = new Map();
+let namerPendingItems = [];
+let namerBatchPlans = [];
 const basePath = location.pathname.startsWith('/media-tools') ? '/media-tools' : '';
 const mediaPathGroups = [
   {label:'115', root:'115'},
@@ -342,6 +345,24 @@ function beginNamerForPath(path, kind) {
   $('#namer-result').scrollIntoView({behavior:'smooth', block:'center'});
 }
 
+function updateNamerQueue() {
+  const count = namerQueue.size;
+  $('#namer-queue-count').textContent = count ? `已加入 ${count} 个目录，将严格串行处理` : '尚未选择项目';
+  $('#namer-plan-queue').disabled = !count;
+  $('#namer-add-all').disabled = !namerPendingItems.length;
+  $$('.namer-inbox-item').forEach(item => {
+    const selected = namerQueue.has(item.dataset.path);
+    item.classList.toggle('selected', selected);
+    const action = item.querySelector('small i');
+    if (action) action.textContent = selected ? '已加入 ✓' : '加入队列 →';
+  });
+}
+
+function addNamerItems(items) {
+  items.forEach(item => namerQueue.set(item.path, item));
+  updateNamerQueue();
+}
+
 async function loadNamerInbox() {
   const target = $('#namer-inbox');
   const button = $('#namer-inbox-reload');
@@ -350,11 +371,19 @@ async function loadNamerInbox() {
   target.innerHTML = '<div class="inbox-loading-card"><span></span><div><strong>正在检测新资源</strong><small>只读浅层检查，不读取视频</small></div></div>';
   try {
     const data = await fetchPending();
+    namerPendingItems = data.pending;
     const grouped = groupByProvider(data.pending);
     target.className = 'inbox-panel';
     const providerSummary = Object.entries(grouped).map(([provider, items]) => `<span><b>${escapeHtml(providerLabel(provider))}</b>${items.length}</span>`).join('');
-    target.innerHTML = `<div class="inbox-heading"><div class="inbox-title"><span class="inbox-orb">✦</span><div><strong>新增与订阅更新</strong><span>按网盘更新时间排序，点击后只整理发生变化的作品</span></div></div><div class="inbox-total"><b>${data.pending_count}</b><span>待处理</span></div></div><div class="provider-summary">${providerSummary || '<span><b>已清空</b>0</span>'}</div>${Object.entries(grouped).length ? `<div class="inbox-body">${Object.entries(grouped).map(([provider, items]) => `<section class="provider-task-group"><div class="provider-task-head"><div><strong>${escapeHtml(providerLabel(provider))}</strong><span>${items.length} 项待处理</span></div><span class="provider-index">${String(items.length).padStart(2,'0')}</span></div><div class="compact-task-list">${items.map(item => `<button class="compact-task namer-inbox-item" type="button" data-path="${escapeHtml(item.path)}" data-kind="${escapeHtml(item.kind)}"><span>${escapeHtml(item.name)}</span><small>${item.reason === 'subscription_update' ? '订阅更新' : '新入库'} · ${item.kind === 'movie' ? '电影' : '剧集'} · ${escapeHtml(item.category)}<i>开始识别 →</i></small></button>`).join('')}</div></section>`).join('')}</div>` : '<div class="history-empty inbox-empty">没有发现新入库或订阅更新。</div>'}`;
-    $$('.namer-inbox-item').forEach(item => item.addEventListener('click', () => beginNamerForPath(item.dataset.path, item.dataset.kind)));
+    target.innerHTML = `<div class="inbox-heading"><div class="inbox-title"><span class="inbox-orb">✦</span><div><strong>新增与订阅更新</strong><span>按网盘更新时间排序，选择后统一预览与执行</span></div></div><div class="inbox-total"><b>${data.pending_count}</b><span>待处理</span></div></div><div class="provider-summary">${providerSummary || '<span><b>已清空</b>0</span>'}</div>${Object.entries(grouped).length ? `<div class="inbox-body">${Object.entries(grouped).map(([provider, items]) => `<section class="provider-task-group"><div class="provider-task-head"><div><strong>${escapeHtml(providerLabel(provider))}</strong><span>${items.length} 项待处理</span></div><button class="mini-button namer-add-provider" type="button" data-provider="${escapeHtml(provider)}">本盘一键加入</button></div><div class="compact-task-list">${items.map(item => `<button class="compact-task namer-inbox-item" type="button" data-path="${escapeHtml(item.path)}" data-kind="${escapeHtml(item.kind)}"><span>${escapeHtml(item.name)}</span><small>${item.reason === 'subscription_update' ? '订阅更新' : '新入库'} · ${item.kind === 'movie' ? '电影' : '剧集'} · ${escapeHtml(item.category)}<i>加入队列 →</i></small></button>`).join('')}</div></section>`).join('')}</div>` : '<div class="history-empty inbox-empty">没有发现新入库或订阅更新。</div>'}`;
+    $$('.namer-inbox-item').forEach(button => button.addEventListener('click', () => {
+      const item = namerPendingItems.find(value => value.path === button.dataset.path);
+      if (!item) return;
+      if (namerQueue.has(item.path)) namerQueue.delete(item.path); else namerQueue.set(item.path, item);
+      updateNamerQueue();
+    }));
+    $$('.namer-add-provider').forEach(button => button.addEventListener('click', () => addNamerItems(grouped[button.dataset.provider] || [])));
+    updateNamerQueue();
   } catch (error) {
     target.className = 'inbox-loading-wrap';
     target.innerHTML = `<div class="history-empty">检测失败：${escapeHtml(error.message || error)}</div>`;
@@ -363,8 +392,61 @@ async function loadNamerInbox() {
 }
 
 $('#namer-inbox-reload').addEventListener('click', loadNamerInbox);
+$('#namer-add-all').addEventListener('click', () => addNamerItems(namerPendingItems));
+$('#namer-plan-queue').addEventListener('click', planNamerQueue);
 $('#emby-reload-all').addEventListener('click', loadEmbyCenter);
 $('#emby-run-queue').addEventListener('click', runEmbyQueue);
+
+async function planNamerQueue() {
+  const button = $('#namer-plan-queue');
+  const target = $('#namer-result');
+  const items = [...namerQueue.values()];
+  namerBatchPlans = [];
+  button.disabled = true;
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    target.className = 'result-space job-card';
+    target.innerHTML = `<span class="status running">预览中</span><h3>正在串行识别 ${index + 1}/${items.length}</h3><p>${escapeHtml(item.path)}</p><p>逐个调用 TMDb 并生成只读计划，不会在此阶段改名。</p>`;
+    try {
+      const identified = await api('/api/namer/identify', {path:item.path, kind:item.kind, title_style:'auto', source_parent:false});
+      const plan = await api('/api/namer/plan', {path:item.path, tmdb_id:identified.tmdb_id, kind:item.kind, title_style:'auto', source_parent:false});
+      namerBatchPlans.push({...plan, queue_item:item});
+    } catch (error) {
+      namerBatchPlans.push({queue_item:item, error:error.message || String(error), operations:[], conflicts:[]});
+    }
+  }
+  const executable = namerBatchPlans.filter(plan => !plan.error && !plan.conflicts.length && plan.operations.length);
+  const operationCount = executable.reduce((sum, plan) => sum + plan.operations.length, 0);
+  const failed = namerBatchPlans.length - executable.length;
+  target.className = 'result-space result-card';
+  target.innerHTML = `<div class="result-toolbar"><div><strong>${executable.length} 个目录可以批量执行</strong><div class="meta">共 ${operationCount} 项改名 · ${failed} 个无需处理或需单独审核</div></div><span class="status ${executable.length ? 'planned' : 'compliant'}">${executable.length ? '等待确认' : '无需执行'}</span></div><div class="compact-task-list">${namerBatchPlans.map(plan => `<article class="compact-task-row"><div><strong>${escapeHtml(plan.queue_item.name)}</strong><small>${plan.error ? escapeHtml(plan.error) : (plan.conflicts.length ? `${plan.conflicts.length} 个冲突` : `${plan.operations.length} 项改名`)}</small></div><span class="status ${plan.error || plan.conflicts.length ? 'failed' : (plan.operations.length ? 'planned' : 'compliant')}">${plan.error || plan.conflicts.length ? '待审核' : (plan.operations.length ? '可执行' : '已规范')}</span></article>`).join('')}</div>${executable.length ? `<div class="apply-panel"><label><span>批量执行确认</span><div class="confirm-row"><input id="batch-apply-confirm" autocomplete="off" placeholder="批量执行 ${executable.length} 个目录"><button class="secondary" id="batch-fill-confirm" type="button">一键填入</button></div></label><button class="primary danger" id="batch-apply-plan" type="button">确认批量执行</button></div>` : ''}`;
+  if (executable.length) {
+    $('#batch-fill-confirm').addEventListener('click', () => { $('#batch-apply-confirm').value = `批量执行 ${executable.length} 个目录`; });
+    $('#batch-apply-plan').addEventListener('click', () => applyNamerBatch(executable));
+  }
+  updateNamerQueue();
+}
+
+async function applyNamerBatch(plans) {
+  const button = $('#batch-apply-plan');
+  button.disabled = true;
+  try {
+    const data = await api('/api/namer/batch/apply', {plan_ids:plans.map(plan => plan.plan_id), confirmation:$('#batch-apply-confirm').value});
+    toast('批量改名已在后台严格串行启动');
+    pollNamerBatchJob(data.job_id);
+  } catch (error) { toast(error.message || String(error), true); button.disabled = false; }
+}
+
+async function pollNamerBatchJob(jobId) {
+  const target = $('#namer-result');
+  try {
+    const job = await api(`/api/jobs/${jobId}`);
+    target.className = 'result-space job-card';
+    target.innerHTML = `<span class="status ${escapeHtml(job.status)}">${job.status === 'running' ? '执行中' : (job.status === 'completed' ? '已完成' : '部分失败')}</span><h3>${job.status === 'running' ? `正在串行改名 ${job.completed || 0}/${job.total}` : `批量改名完成 ${job.completed || 0}/${job.total}`}</h3>${job.current ? `<p>当前：${escapeHtml(job.current)}</p>` : ''}${job.output ? `<pre>${escapeHtml(job.output)}</pre>` : '<p>服务器一次只处理一个目录，页面可以关闭。</p>'}`;
+    if (job.status === 'running') setTimeout(() => pollNamerBatchJob(jobId), 2500);
+    else { namerQueue.clear(); updateNamerQueue(); loadNamerInbox(); toast(job.status === 'completed' ? '批量改名完成' : '部分目录失败，请查看结果', job.status !== 'completed'); }
+  } catch (error) { fail(target, error); }
+}
 
 function updateEmbyQueue() {
   const button = $('#emby-run-queue');

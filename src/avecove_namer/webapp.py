@@ -893,6 +893,80 @@ class App:
         threading.Thread(target=self._run_apply, args=(job_id, plan_id, plan), daemon=True).start()
         return {"status": "running", "job_id": job_id}
 
+    def apply_batch(self, payload: dict[str, Any]) -> dict[str, Any]:
+        raw_ids = payload.get("plan_ids")
+        if not isinstance(raw_ids, list) or not raw_ids:
+            raise ValueError("请先为批量队列生成预览")
+        plan_ids = list(dict.fromkeys(str(value) for value in raw_ids))
+        if len(plan_ids) > 30 or any(not value.isalnum() for value in plan_ids):
+            raise ValueError("批量计划无效；一次最多处理 30 个目录")
+        plans: list[tuple[str, RenamePlan]] = []
+        for plan_id in plan_ids:
+            plan_path = self.settings.work_root / plan_id / "plan.json"
+            if not plan_path.is_file():
+                raise ValueError("部分改名预览已失效，请重新生成")
+            plan = read_plan(str(plan_path))
+            if plan.conflicts:
+                raise ValueError(f"{plan.root} 仍有冲突，不能加入批量执行")
+            if plan.operations:
+                plans.append((plan_id, plan))
+        if not plans:
+            raise ValueError("所选目录均已规范，无需执行")
+        expected = f"批量执行 {len(plans)} 个目录"
+        if str(payload.get("confirmation") or "").strip() != expected:
+            raise ValueError(f"请输入“{expected}”确认")
+        with self._jobs_lock:
+            if any(job.get("type") in {"namer_apply", "namer_batch_apply"} and job.get("status") == "running" for job in self._jobs.values()):
+                raise ValueError("已有 Namer 改名任务正在执行")
+        for plan_id, _ in plans:
+            if (self.settings.work_root / plan_id / ".apply-started").exists():
+                raise ValueError("队列中有计划已经执行过，请重新生成预览")
+        for plan_id, _ in plans:
+            claim = self.settings.work_root / plan_id / ".apply-started"
+            descriptor = os.open(claim, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            os.close(descriptor)
+        job_id = secrets.token_hex(8)
+        operation_count = sum(len(plan.operations) for _, plan in plans)
+        with self._jobs_lock:
+            self._jobs[job_id] = {
+                "id": job_id, "type": "namer_batch_apply", "status": "running",
+                "started_at": utc_now(), "total": len(plans), "completed": 0,
+                "failed": 0, "operations": operation_count, "current": plans[0][1].root,
+            }
+        threading.Thread(target=self._run_batch_apply, args=(job_id, plans), daemon=True).start()
+        return {"status": "running", "job_id": job_id}
+
+    def _run_batch_apply(self, job_id: str, plans: list[tuple[str, RenamePlan]]) -> None:
+        completed = failed = 0
+        summaries: list[str] = []
+        refresh_paths: list[str] = []
+        for index, (plan_id, plan) in enumerate(plans, 1):
+            with self._jobs_lock:
+                self._jobs[job_id].update({"current": plan.root, "current_index": index})
+            try:
+                execute_plan(
+                    plan, self.openlist(),
+                    str(self.settings.work_root / plan_id / "rollback.jsonl"),
+                    execute=True, confirm_root=plan.root, confirm_count=len(plan.operations),
+                )
+                final_path = next(
+                    (operation.target for operation in plan.operations if operation.kind == "rename_directory" and operation.source == plan.root),
+                    plan.root,
+                )
+                refresh_paths.append(final_path)
+                completed += 1
+                summaries.append(f"[{index}/{len(plans)}] 改名完成：{final_path}")
+            except Exception as exc:
+                failed += 1
+                summaries.append(f"[{index}/{len(plans)}] 失败：{plan.root} · {exc}")
+            with self._jobs_lock:
+                self._jobs[job_id].update({"completed": completed, "failed": failed, "output": "\n".join(summaries[-30:])})
+        with self._jobs_lock:
+            self._jobs[job_id].update({
+                "status": "completed" if failed == 0 else "failed", "current": None,
+                "refresh_paths": refresh_paths, "finished_at": utc_now(),
+            })
+
     def _run_apply(self, job_id: str, plan_id: str, plan: RenamePlan) -> None:
         journal = self.settings.work_root / plan_id / "rollback.jsonl"
         try:
@@ -1171,6 +1245,7 @@ def handler_factory(app: App):
                     "/api/namer/plan": app.create_plan,
                     "/api/namer/identify": app.identify_path,
                     "/api/namer/apply": app.apply_plan,
+                    "/api/namer/batch/apply": app.apply_batch,
                     "/api/emby/refresh": lambda payload: {"job_id": app.start_refresh(payload.get("path"))},
                     "/api/emby/refresh-queue": lambda payload: {"job_id": app.start_refresh_queue(payload)},
                     "/api/emby/duplicates/clean": app.clean_emby_duplicates,
