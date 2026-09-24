@@ -72,6 +72,33 @@ class TMDBClientTests(unittest.TestCase):
             ("/tv/301418/season/1", {"language": "ko"}),
         ])
 
+    def test_discover_keeps_media_kind_and_language_filter(self):
+        client = TMDBClient("0123456789abcdef0123456789abcdef")
+        calls = []
+
+        def fake_get(endpoint, params):
+            calls.append((endpoint, params))
+            return {"results": [{"id": 7, "title": "测试电影", "original_title": "Test", "original_language": "zh", "release_date": "2026-01-02", "poster_path": "/x.jpg"}]}
+
+        client._get = fake_get
+        result = client.discover("movie", original_language="zh")
+        self.assertEqual(result[0]["kind"], "movie")
+        self.assertEqual(result[0]["year"], 2026)
+        self.assertEqual(calls[0][1]["with_original_language"], "zh")
+
+    def test_trailer_prefers_official_trailer_over_teaser(self):
+        client = TMDBClient("0123456789abcdef0123456789abcdef")
+
+        def fake_get(endpoint, params):
+            if params["language"] == "zh-CN":
+                return {"results": [{"key": "teaser", "site": "YouTube", "type": "Teaser", "official": True, "size": 1080}]}
+            return {"results": [{"key": "trailer", "site": "YouTube", "type": "Trailer", "official": True, "size": 720}]}
+
+        client._get = fake_get
+        result = client.trailer(7, "movie")
+        self.assertEqual(result["key"], "trailer")
+        self.assertIn("youtube-nocookie.com/embed/trailer", result["embed_url"])
+
 
 if __name__ == "__main__":
     unittest.main()

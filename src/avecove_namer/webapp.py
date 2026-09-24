@@ -630,8 +630,40 @@ class App:
         if source not in {"emby", "trending"} or kind not in {"all", "movie", "tv"}:
             raise ValueError("推荐条件无效")
         if source == "trending":
-            selected_kind = "tv" if kind == "all" else kind
-            items = self.tmdb().trending(selected_kind, "zh-CN")
+            client = self.tmdb()
+            kinds = ("movie", "tv") if kind == "all" else (kind,)
+            items: list[dict[str, Any]] = []
+            for selected_kind in kinds:
+                items.extend(client.trending(selected_kind, "zh-CN"))
+                # Trending alone heavily favours overseas titles. A dedicated
+                # Chinese-language pool keeps domestic work in every shuffle.
+                items.extend(client.discover(selected_kind, original_language="zh", language="zh-CN"))
+
+            deduplicated: dict[tuple[str, str], dict[str, Any]] = {}
+            for item in items:
+                key = (str(item.get("kind") or ""), str(item.get("id") or ""))
+                if key[1] and item.get("poster_path"):
+                    deduplicated[key] = item
+            pools: dict[tuple[str, str], list[dict[str, Any]]] = {}
+            domestic_languages = {"zh", "cn", "yue"}
+            for item in deduplicated.values():
+                origin = "domestic" if str(item.get("language") or "").casefold() in domestic_languages else "overseas"
+                pools.setdefault((str(item.get("kind")), origin), []).append(item)
+            for pool in pools.values():
+                random.shuffle(pool)
+
+            # Round-robin the four pools so each refresh is random but remains
+            # balanced across movie/TV and domestic/overseas content.
+            items = []
+            pool_order = [(media_kind, origin) for media_kind in kinds for origin in ("domestic", "overseas")]
+            random.shuffle(pool_order)
+            while len(items) < 32 and any(pools.get(key) for key in pool_order):
+                for key in pool_order:
+                    pool = pools.get(key) or []
+                    if pool:
+                        items.append(pool.pop())
+                        if len(items) >= 32:
+                            break
             genre_sets = {
                 "relaxed": {16, 35, 10751, 10762},
                 "spectacle": {12, 14, 28, 878, 10759, 10765},
@@ -653,6 +685,8 @@ class App:
                         "genres": "TMDb 本周热门",
                         "note": item.get("overview") or "近期热度较高，适合加入待看片单。",
                         "kind": item.get("kind"),
+                        "language": item.get("language"),
+                        "origin": "国产" if str(item.get("language") or "").casefold() in domestic_languages else "海外",
                         "image_url": f"https://image.tmdb.org/t/p/w780{item['poster_path']}" if item.get("poster_path") else None,
                         "open_url": f"https://www.themoviedb.org/{item['kind']}/{item['id']}",
                         "rating": item.get("rating"),
@@ -706,6 +740,21 @@ class App:
                 }
             )
         return {"source": "emby", "total": data.get("TotalRecordCount", len(output)), "items": output}
+
+    def watch_trailer(self, payload: dict[str, Any]) -> dict[str, Any]:
+        value = str(payload.get("tmdb_id") or payload.get("id") or "").strip()
+        kind = str(payload.get("kind") or "").strip()
+        if not value.isdecimal() or kind not in {"movie", "tv"}:
+            raise ValueError("影片编号或类型无效")
+        tmdb_id = int(value)
+        trailer = self.tmdb().trailer(tmdb_id, kind)
+        return {
+            "tmdb_id": tmdb_id,
+            "kind": kind,
+            "available": trailer is not None,
+            "trailer": trailer,
+            "detail_url": f"https://www.themoviedb.org/{kind}/{tmdb_id}",
+        }
 
     def emby_image(self, item_id: str) -> tuple[bytes, str]:
         if not item_id or not item_id.isalnum():
@@ -1250,6 +1299,7 @@ def handler_factory(app: App):
                     "/api/emby/refresh-queue": lambda payload: {"job_id": app.start_refresh_queue(payload)},
                     "/api/emby/duplicates/clean": app.clean_emby_duplicates,
                     "/api/watch/recommendations": app.watch_recommendations,
+                    "/api/watch/trailer": app.watch_trailer,
                 }
                 action = routes.get(routed_path(self.path))
                 if not action:

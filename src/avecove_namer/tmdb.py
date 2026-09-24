@@ -90,6 +90,86 @@ class TMDBClient:
             )
         return output
 
+    def discover(
+        self,
+        kind: str,
+        *,
+        original_language: str | None = None,
+        page: int = 1,
+        language: str = "zh-CN",
+    ) -> list[dict[str, object]]:
+        """Return a high-quality discovery pool with the same shape as trending()."""
+        if kind not in {"tv", "movie"}:
+            raise TMDBError("TMDB kind must be tv or movie")
+        params: dict[str, object] = {
+            "language": language,
+            "page": max(1, page),
+            "sort_by": "popularity.desc",
+            "include_adult": "false",
+            "vote_count.gte": 30,
+        }
+        if original_language:
+            params["with_original_language"] = original_language
+        payload = self._get(f"/discover/{kind}", params)
+        output: list[dict[str, object]] = []
+        for item in payload.get("results", [])[:20]:
+            title = item.get("name") if kind == "tv" else item.get("title")
+            original = item.get("original_name") if kind == "tv" else item.get("original_title")
+            date = item.get("first_air_date") if kind == "tv" else item.get("release_date")
+            output.append(
+                {
+                    "id": item.get("id"),
+                    "title": title,
+                    "original_title": original,
+                    "year": int(date[:4]) if isinstance(date, str) and len(date) >= 4 else None,
+                    "language": item.get("original_language"),
+                    "overview": item.get("overview"),
+                    "genre_ids": item.get("genre_ids") or [],
+                    "poster_path": item.get("poster_path"),
+                    "popularity": item.get("popularity"),
+                    "rating": item.get("vote_average"),
+                    "kind": kind,
+                }
+            )
+        return output
+
+    def trailer(self, tmdb_id: int, kind: str) -> dict[str, object] | None:
+        """Pick the best official YouTube trailer, preferring Chinese metadata."""
+        if kind not in {"tv", "movie"}:
+            raise TMDBError("TMDB kind must be tv or movie")
+        candidates: list[dict[str, object]] = []
+        seen: set[str] = set()
+        for language in ("zh-CN", "en-US"):
+            payload = self._get(f"/{kind}/{tmdb_id}/videos", {"language": language})
+            for item in payload.get("results", []):
+                key = str(item.get("key") or "")
+                if not key or key in seen or str(item.get("site") or "").casefold() != "youtube":
+                    continue
+                seen.add(key)
+                candidates.append(item)
+        if not candidates:
+            return None
+
+        type_rank = {"trailer": 0, "teaser": 1, "clip": 2}
+        candidates.sort(
+            key=lambda item: (
+                type_rank.get(str(item.get("type") or "").casefold(), 3),
+                not bool(item.get("official")),
+                -int(item.get("size") or 0),
+            )
+        )
+        selected = candidates[0]
+        key = str(selected["key"])
+        return {
+            "name": str(selected.get("name") or "预告片"),
+            "type": str(selected.get("type") or "Trailer"),
+            "official": bool(selected.get("official")),
+            "site": "YouTube",
+            "key": key,
+            "embed_url": f"https://www.youtube-nocookie.com/embed/{key}?autoplay=1&rel=0",
+            "watch_url": f"https://www.youtube.com/watch?v={key}",
+        }
+
     def details(self, tmdb_id: int, kind: str, language: str) -> dict[str, object]:
         if kind not in {"tv", "movie"}:
             raise TMDBError("TMDB kind must be tv or movie")
