@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import os
 from pathlib import Path
 
 from avecove_namer.webapp import App, Settings, media_name_matches, normalized_lookup_query, normalized_media_name, recommended_folder_name, safe_cloud_path
@@ -147,6 +148,32 @@ class WebAppTests(unittest.TestCase):
             result = app.emby_pending()
             movie = next(item for item in result["pending"] if item["path"].startswith("/115/00影/01外/"))
             self.assertEqual(movie["kind"], "movie")
+
+    def test_emby_pending_detects_subscription_update_by_modified_time(self):
+        class Backend:
+            def list_directories(self, root, refresh=False):
+                if root == "/115/00剧/01美":
+                    return [{"name": "Existing (2020)", "modified": "2026-09-24T01:00:00Z"}]
+                return []
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            local = root / "media/115/00剧/01美/Existing (2020)"
+            local.mkdir(parents=True)
+            episode = local / "Existing.2020.S01E01.strm"
+            episode.write_text("https://example.invalid/video", encoding="utf-8")
+            os.utime(episode, (1_700_000_000, 1_700_000_000))
+            settings = Settings(
+                host="127.0.0.1", port=8787, openlist_url="http://127.0.0.1:5245",
+                openlist_token_file=root / "openlist.token", tmdb_token_file=root / "tmdb.token",
+                work_root=root / "jobs", detective_summary=root / "summary.json",
+                refresh_worker=root / "refresh.py", media_index_root=root / "media",
+            )
+            app = App(settings)
+            app.openlist = lambda: Backend()
+            result = app.emby_pending()
+            self.assertEqual(result["pending_count"], 1)
+            self.assertEqual(result["pending"][0]["reason"], "subscription_update")
 
     def test_emby_duplicate_plan_keeps_one_episode_and_only_previews_cleanup(self):
         with tempfile.TemporaryDirectory() as directory:

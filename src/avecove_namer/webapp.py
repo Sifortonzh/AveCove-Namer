@@ -93,6 +93,19 @@ def media_tmdb_id(value: object) -> str | None:
     return match.group(1) if match else None
 
 
+def media_modified_timestamp(value: object) -> float | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.timestamp()
+    except ValueError:
+        return None
+
+
 def normalized_lookup_query(value: object) -> tuple[str, int | None]:
     """Turn copied release/folder names into a TMDb-friendly title and year."""
     raw = str(value or "").strip()
@@ -319,16 +332,24 @@ class App:
             local_root = self.settings.media_index_root / root.lstrip("/")
             local_tmdb_ids: set[str] = set()
             local_names: set[str] = set()
+            local_tmdb_latest: dict[str, float] = {}
+            local_name_latest: dict[str, float] = {}
             if local_root.is_dir():
                 for local_title in local_root.iterdir():
-                    if not local_title.is_dir() or not any(local_title.rglob("*.strm")):
+                    if not local_title.is_dir():
                         continue
+                    strm_files = list(local_title.rglob("*.strm"))
+                    if not strm_files:
+                        continue
+                    latest = max(path.stat().st_mtime for path in strm_files)
                     tmdb_id = media_tmdb_id(local_title.name)
                     if tmdb_id:
                         local_tmdb_ids.add(tmdb_id)
+                        local_tmdb_latest[tmdb_id] = max(local_tmdb_latest.get(tmdb_id, 0), latest)
                     normalized = normalized_media_name(local_title.name)
                     if normalized:
                         local_names.add(normalized)
+                        local_name_latest[normalized] = max(local_name_latest.get(normalized, 0), latest)
             for item in directories:
                 name = str(item.get("name") or "").strip()
                 if not name:
@@ -336,9 +357,16 @@ class App:
                 cloud_titles += 1
                 tmdb_id = media_tmdb_id(name)
                 normalized = normalized_media_name(name)
-                if (tmdb_id and tmdb_id in local_tmdb_ids) or (normalized and normalized in local_names):
+                local_latest = (
+                    local_tmdb_latest.get(tmdb_id or "")
+                    or local_name_latest.get(normalized)
+                )
+                already_present = (tmdb_id and tmdb_id in local_tmdb_ids) or (normalized and normalized in local_names)
+                cloud_modified = media_modified_timestamp(item.get("modified"))
+                if already_present:
                     present_titles += 1
-                    continue
+                    if not cloud_modified or not local_latest or cloud_modified <= local_latest + 60:
+                        continue
                 path = str(PurePosixPath(root) / name)
                 pending.append({
                     "provider": PurePosixPath(root).parts[1],
@@ -346,9 +374,12 @@ class App:
                     "kind": media_kind,
                     "name": name,
                     "path": path,
+                    "reason": "subscription_update" if already_present else "new_title",
+                    "modified": str(item.get("modified") or ""),
                 })
         unique = list({item["path"]: item for item in pending}.values())
         unique.sort(key=lambda item: (item["provider"].casefold(), item["category"].casefold(), item["name"].casefold()))
+        unique.sort(key=lambda item: media_modified_timestamp(item.get("modified")) or 0, reverse=True)
         return {
             "mode": "shallow",
             "scanned_roots": scanned_roots,
