@@ -635,9 +635,25 @@ class App:
             items: list[dict[str, Any]] = []
             for selected_kind in kinds:
                 items.extend(client.trending(selected_kind, "zh-CN"))
-                # Trending alone heavily favours overseas titles. A dedicated
-                # Chinese-language pool keeps domestic work in every shuffle.
-                items.extend(client.discover(selected_kind, original_language="zh", language="zh-CN"))
+                # Pull a different page on every request instead of repeatedly
+                # showing only TMDb's first popular page.  The language pool
+                # keeps Chinese and Cantonese work represented, while the
+                # global pool greatly expands overseas variety.
+                items.extend(
+                    client.discover(
+                        selected_kind,
+                        original_language="zh|yue",
+                        page=random.randint(1, 10),
+                        language="zh-CN",
+                    )
+                )
+                items.extend(
+                    client.discover(
+                        selected_kind,
+                        page=random.randint(1, 25),
+                        language="zh-CN",
+                    )
+                )
 
             deduplicated: dict[tuple[str, str], dict[str, Any]] = {}
             for item in items:
@@ -657,7 +673,7 @@ class App:
             items = []
             pool_order = [(media_kind, origin) for media_kind in kinds for origin in ("domestic", "overseas")]
             random.shuffle(pool_order)
-            while len(items) < 32 and any(pools.get(key) for key in pool_order):
+            while len(items) < 54 and any(pools.get(key) for key in pool_order):
                 for key in pool_order:
                     pool = pools.get(key) or []
                     if pool:
