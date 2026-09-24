@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from http import HTTPStatus
@@ -633,27 +634,35 @@ class App:
             client = self.tmdb()
             kinds = ("movie", "tv") if kind == "all" else (kind,)
             items: list[dict[str, Any]] = []
-            for selected_kind in kinds:
-                items.extend(client.trending(selected_kind, "zh-CN"))
-                # Pull a different page on every request instead of repeatedly
-                # showing only TMDb's first popular page.  The language pool
-                # keeps Chinese and Cantonese work represented, while the
-                # global pool greatly expands overseas variety.
-                items.extend(
-                    client.discover(
-                        selected_kind,
-                        original_language="zh|yue",
-                        page=random.randint(1, 10),
-                        language="zh-CN",
+            # Run independent TMDb pools concurrently so a much larger random
+            # catalogue does not make the home page wait on six serial calls.
+            jobs = []
+            with ThreadPoolExecutor(max_workers=6) as executor:
+                for selected_kind in kinds:
+                    jobs.append(executor.submit(client.trending, selected_kind, "zh-CN"))
+                    # Pull a different page on every request instead of repeatedly
+                    # showing only TMDb's first popular page.  The language pool
+                    # keeps Chinese and Cantonese work represented, while the
+                    # global pool greatly expands overseas variety.
+                    jobs.append(
+                        executor.submit(
+                            client.discover,
+                            selected_kind,
+                            original_language="zh|yue",
+                            page=random.randint(1, 5),
+                            language="zh-CN",
+                        )
                     )
-                )
-                items.extend(
-                    client.discover(
-                        selected_kind,
-                        page=random.randint(1, 25),
-                        language="zh-CN",
+                    jobs.append(
+                        executor.submit(
+                            client.discover,
+                            selected_kind,
+                            page=random.randint(1, 12),
+                            language="zh-CN",
+                        )
                     )
-                )
+                for job in jobs:
+                    items.extend(job.result())
 
             deduplicated: dict[tuple[str, str], dict[str, Any]] = {}
             for item in items:
