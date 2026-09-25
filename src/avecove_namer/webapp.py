@@ -205,6 +205,7 @@ class App:
         self._cloud_cache_lock = threading.Lock()
         self._manual_history_lock = threading.Lock()
         self._namer_completed_lock = threading.Lock()
+        self._namer_pending_cache: dict[tuple[str, str], bool] = {}
 
     def tmdb(self) -> TMDBClient:
         return TMDBClient(read_secret(self.settings.tmdb_token_file))
@@ -441,11 +442,11 @@ class App:
             temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             os.replace(temporary, state_path)
 
-    def _known_namer_candidate_needs_work(self, item: dict[str, str], expected: str) -> bool:
+    def _known_namer_candidate_needs_work(self, item: dict[str, str], expected: str | None) -> bool:
         path = item["path"]
         entries = self.openlist().scan(path, refresh=True)
         current_signature = fingerprint(entries)
-        if current_signature == expected:
+        if expected and current_signature == expected:
             return False
         tmdb_id = media_tmdb_id(PurePosixPath(path).name)
         if not tmdb_id:
@@ -478,24 +479,33 @@ class App:
         result = self.emby_pending()
         completed = self._namer_completed_fingerprints()
         pending: list[dict[str, str]] = []
-        checks: list[tuple[dict[str, str], str]] = []
+        checks: list[tuple[dict[str, str], str | None]] = []
         filtered = 0
         for item in result["pending"]:
             # This is a container below the 115 movie category, not a title.
             if item["kind"] == "movie" and item["name"] in {"总其他"}:
                 filtered += 1
                 continue
+            cache_key = (item["path"], str(item.get("modified") or ""))
+            if cache_key in self._namer_pending_cache:
+                if self._namer_pending_cache[cache_key]:
+                    pending.append(item)
+                else:
+                    filtered += 1
+                continue
             expected = completed.get(item["path"])
-            if expected:
-                checks.append((item, expected))
-            else:
+            if not expected and not media_tmdb_id(item["name"]):
                 pending.append(item)
+            else:
+                checks.append((item, expected))
         if checks:
-            with ThreadPoolExecutor(max_workers=3) as executor:
+            with ThreadPoolExecutor(max_workers=5) as executor:
                 futures = [(item, executor.submit(self._known_namer_candidate_needs_work, item, expected)) for item, expected in checks]
                 for item, future in futures:
                     try:
-                        if future.result():
+                        needs_work = future.result()
+                        self._namer_pending_cache[(item["path"], str(item.get("modified") or ""))] = needs_work
+                        if needs_work:
                             pending.append(item)
                         else:
                             filtered += 1

@@ -187,7 +187,7 @@ class WebAppTests(unittest.TestCase):
             )
             app = App(settings)
             done = {"path": "/123/00影/01外/Done (2020) {tmdb=1}", "name": "Done (2020) {tmdb=1}", "kind": "movie", "provider": "123", "category": "01外", "reason": "subscription_update", "modified": "2026-09-24T01:00:00Z"}
-            fresh = {"path": "/115/00剧/01美/Fresh (2026) {tmdb=2}", "name": "Fresh (2026) {tmdb=2}", "kind": "tv", "provider": "115", "category": "01美", "reason": "subscription_update", "modified": "2026-09-25T01:00:00Z"}
+            fresh = {"path": "/115/00剧/01美/Fresh raw 2026", "name": "Fresh raw 2026", "kind": "tv", "provider": "115", "category": "01美", "reason": "new_title", "modified": "2026-09-25T01:00:00Z"}
             container = {"path": "/115/00影/01国/总其他", "name": "总其他", "kind": "movie", "provider": "115", "category": "01国", "reason": "new_title", "modified": "2026-09-20T01:00:00Z"}
             app.emby_pending = lambda: {"mode": "shallow", "pending_count": 3, "pending": [done, fresh, container], "errors": []}
             app._namer_completed_fingerprints = lambda: {done["path"]: "known"}
