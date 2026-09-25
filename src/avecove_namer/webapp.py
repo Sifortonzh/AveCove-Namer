@@ -332,65 +332,64 @@ class App:
         errors: list[dict[str, str]] = []
         cloud_titles = present_titles = 0
         scanned_roots = 0
-        for root in roots:
-            # Only category roots are titles; e.g. /Quark/00影 itself contains categories.
-            if len(PurePosixPath(root).parts) < 4:
-                continue
-            try:
-                directories = self._cloud_directories(backend, root)
-            except BackendError as exc:
-                errors.append({"root": root, "error": str(exc)})
-                continue
-            scanned_roots += 1
-            media_kind = "movie" if root in CLOUD_LIBRARY_ROOTS["movie"] else "tv"
-            local_root = self.settings.media_index_root / root.lstrip("/")
-            local_tmdb_ids: set[str] = set()
-            local_names: set[str] = set()
-            local_tmdb_latest: dict[str, float] = {}
-            local_name_latest: dict[str, float] = {}
-            if local_root.is_dir():
-                for local_title in local_root.iterdir():
-                    if not local_title.is_dir():
-                        continue
-                    strm_files = list(local_title.rglob("*.strm"))
-                    if not strm_files:
-                        continue
-                    latest = max(path.stat().st_mtime for path in strm_files)
-                    tmdb_id = media_tmdb_id(local_title.name)
-                    if tmdb_id:
-                        local_tmdb_ids.add(tmdb_id)
-                        local_tmdb_latest[tmdb_id] = max(local_tmdb_latest.get(tmdb_id, 0), latest)
-                    normalized = normalized_media_name(local_title.name)
-                    if normalized:
-                        local_names.add(normalized)
-                        local_name_latest[normalized] = max(local_name_latest.get(normalized, 0), latest)
-            for item in directories:
-                name = str(item.get("name") or "").strip()
-                if not name:
+        # Fetch shallow category listings with a small fixed worker pool.
+        # A single unavailable cloud must not hold the entire inbox hostage.
+        category_roots = [root for root in roots if len(PurePosixPath(root).parts) >= 4]
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            listings = {root: executor.submit(self._cloud_directories, backend, root) for root in category_roots}
+            for root, future in listings.items():
+                try:
+                    directories = future.result()
+                except BackendError as exc:
+                    errors.append({"root": root, "error": str(exc)})
                     continue
-                cloud_titles += 1
-                tmdb_id = media_tmdb_id(name)
-                normalized = normalized_media_name(name)
-                local_latest = (
-                    local_tmdb_latest.get(tmdb_id or "")
-                    or local_name_latest.get(normalized)
-                )
-                already_present = (tmdb_id and tmdb_id in local_tmdb_ids) or (normalized and normalized in local_names)
-                cloud_modified = media_modified_timestamp(item.get("modified"))
-                if already_present:
-                    present_titles += 1
-                    if not cloud_modified or not local_latest or cloud_modified <= local_latest + 60:
+                scanned_roots += 1
+                media_kind = "movie" if root in CLOUD_LIBRARY_ROOTS["movie"] else "tv"
+                local_root = self.settings.media_index_root / root.lstrip("/")
+                local_tmdb_ids: set[str] = set()
+                local_names: set[str] = set()
+                local_tmdb_latest: dict[str, float] = {}
+                local_name_latest: dict[str, float] = {}
+                if local_root.is_dir():
+                    for local_title in local_root.iterdir():
+                        if not local_title.is_dir():
+                            continue
+                        strm_files = list(local_title.rglob("*.strm"))
+                        if not strm_files:
+                            continue
+                        latest = max(path.stat().st_mtime for path in strm_files)
+                        tmdb_id = media_tmdb_id(local_title.name)
+                        if tmdb_id:
+                            local_tmdb_ids.add(tmdb_id)
+                            local_tmdb_latest[tmdb_id] = max(local_tmdb_latest.get(tmdb_id, 0), latest)
+                        normalized = normalized_media_name(local_title.name)
+                        if normalized:
+                            local_names.add(normalized)
+                            local_name_latest[normalized] = max(local_name_latest.get(normalized, 0), latest)
+                for item in directories:
+                    name = str(item.get("name") or "").strip()
+                    if not name:
                         continue
-                path = str(PurePosixPath(root) / name)
-                pending.append({
-                    "provider": PurePosixPath(root).parts[1],
-                    "category": PurePosixPath(root).name,
-                    "kind": media_kind,
-                    "name": name,
-                    "path": path,
-                    "reason": "subscription_update" if already_present else "new_title",
-                    "modified": str(item.get("modified") or ""),
-                })
+                    cloud_titles += 1
+                    tmdb_id = media_tmdb_id(name)
+                    normalized = normalized_media_name(name)
+                    local_latest = local_tmdb_latest.get(tmdb_id or "") or local_name_latest.get(normalized)
+                    already_present = (tmdb_id and tmdb_id in local_tmdb_ids) or (normalized and normalized in local_names)
+                    cloud_modified = media_modified_timestamp(item.get("modified"))
+                    if already_present:
+                        present_titles += 1
+                        if not cloud_modified or not local_latest or cloud_modified <= local_latest + 60:
+                            continue
+                    path = str(PurePosixPath(root) / name)
+                    pending.append({
+                        "provider": PurePosixPath(root).parts[1],
+                        "category": PurePosixPath(root).name,
+                        "kind": media_kind,
+                        "name": name,
+                        "path": path,
+                        "reason": "subscription_update" if already_present else "new_title",
+                        "modified": str(item.get("modified") or ""),
+                    })
         unique = list({item["path"]: item for item in pending}.values())
         unique.sort(key=lambda item: (item["provider"].casefold(), item["category"].casefold(), item["name"].casefold()))
         unique.sort(key=lambda item: media_modified_timestamp(item.get("modified")) or 0, reverse=True)
