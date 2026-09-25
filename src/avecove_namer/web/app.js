@@ -18,6 +18,7 @@ const mediaPathGroups = [
 ];
 const tvDirectories = ['01美', '01中', '01韩', '01日', '01台', '01英'];
 const movieDirectories = ['01国', '01外'];
+const animeDirectories = {115:['01中','01日','01美'], GuangYa:['01中','01日'], 123:['01中'], Baidu:['01中','01日']};
 
 function applyScene() {
   const hour = new Date().getHours();
@@ -67,6 +68,8 @@ function presetMarkup() {
       ${tvDirectories.map(name => `<button type="button" data-kind="tv" data-path="/${provider.root}/00剧/${name}/">${name}</button>`).join('')}
       <span class="preset-type">电影</span>
       ${movieDirectories.map(name => `<button type="button" data-kind="movie" data-path="/${provider.root}/00影/${name}/">${name}</button>`).join('')}
+      <span class="preset-type">动漫</span>
+      ${(animeDirectories[provider.root] || []).map(name => `<button type="button" data-kind="tv" data-path="/${provider.root}/00漫/${name}/">${name}</button>`).join('')}
     </div>
   </section>`).join('');
 }
