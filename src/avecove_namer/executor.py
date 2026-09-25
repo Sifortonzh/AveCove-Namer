@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from .backends import BackendError, StorageBackend
 from .models import RenameOperation, RenamePlan
@@ -38,6 +39,7 @@ def execute_plan(
     execute: bool = False,
     confirm_root: str | None = None,
     confirm_count: int | None = None,
+    on_progress: Callable[[int, RenameOperation], None] | None = None,
 ) -> list[dict[str, str]]:
     if not execute:
         return []
@@ -69,6 +71,8 @@ def execute_plan(
             journal.append(row)
             with journal_file.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+            if on_progress:
+                on_progress(len(journal), operation)
             continue
         if not source_exists:
             raise ExecutionError(f"Source is stale or missing: {operation.source}")
@@ -87,6 +91,8 @@ def execute_plan(
         journal.append(row)
         with journal_file.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+        if on_progress:
+            on_progress(len(journal), operation)
     return journal
 
 

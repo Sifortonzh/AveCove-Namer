@@ -21,6 +21,7 @@ class ExecutorTests(unittest.TestCase):
             backend = LocalBackend()
             plan = make_plan(backend.scan(str(root.parent)), str(root.parent), "local", NamingPolicy())
             journal = Path(temp) / "journal.jsonl"
+            progress = []
             completed = execute_plan(
                 plan,
                 backend,
@@ -28,8 +29,11 @@ class ExecutorTests(unittest.TestCase):
                 execute=True,
                 confirm_root=str(root.parent),
                 confirm_count=2,
+                on_progress=lambda count, operation: progress.append((count, operation.target)),
             )
             self.assertEqual(len(completed), 2)
+            self.assertEqual([count for count, _ in progress], [1, 2])
+            self.assertEqual(progress[-1][1], plan.operations[-1].target)
             self.assertFalse(video.exists())
             self.assertTrue((root / "Modern.Family.2009.S01E01.1080p.WEB-DL.x265.mkv").exists())
             self.assertTrue((root / "Modern.Family.2009.S01E01.1080p.WEB-DL.x265.zh-CN.sup").exists())

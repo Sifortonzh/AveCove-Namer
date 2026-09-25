@@ -27,7 +27,7 @@ from urllib.parse import parse_qs, urlparse
 from .backends import BackendError, OpenListBackend
 from .detective import _find_movie_tmdb_id, _find_tv_tmdb_id, fingerprint, infer_search_terms
 from .executor import ExecutionError, execute_plan
-from .models import RenamePlan
+from .models import RenameOperation, RenamePlan
 from .naming import NamingPolicy
 from .planner import make_plan, read_plan, write_plan
 from .tmdb import TMDBClient, TMDBError
@@ -1101,6 +1101,8 @@ class App:
                 "type": "namer_apply",
                 "path": plan.root,
                 "operations": len(plan.operations),
+                "completed_operations": 0,
+                "current_operation": None,
                 "status": "running",
                 "started_at": utc_now(),
             }
@@ -1146,6 +1148,7 @@ class App:
                 "id": job_id, "type": "namer_batch_apply", "status": "running",
                 "started_at": utc_now(), "total": len(plans), "completed": 0,
                 "failed": 0, "operations": operation_count, "current": plans[0][1].root,
+                "completed_operations": 0, "current_operation": None,
             }
         threading.Thread(target=self._run_batch_apply, args=(job_id, plans), daemon=True).start()
         return {"status": "running", "job_id": job_id}
@@ -1157,11 +1160,19 @@ class App:
         for index, (plan_id, plan) in enumerate(plans, 1):
             with self._jobs_lock:
                 self._jobs[job_id].update({"current": plan.root, "current_index": index})
+                earlier_operations = self._jobs[job_id]["completed_operations"]
+            def report_progress(count: int, operation: RenameOperation) -> None:
+                with self._jobs_lock:
+                    self._jobs[job_id].update({
+                        "completed_operations": earlier_operations + count,
+                        "current_operation": operation.target,
+                    })
             try:
                 execute_plan(
                     plan, self.openlist(),
                     str(self.settings.work_root / plan_id / "rollback.jsonl"),
                     execute=True, confirm_root=plan.root, confirm_count=len(plan.operations),
+                    on_progress=report_progress,
                 )
                 final_path = next(
                     (operation.target for operation in plan.operations if operation.kind == "rename_directory" and operation.source == plan.root),
@@ -1179,7 +1190,7 @@ class App:
                 failed += 1
                 summaries.append(f"[{index}/{len(plans)}] 失败：{plan.root} · {exc}")
             with self._jobs_lock:
-                self._jobs[job_id].update({"completed": completed, "failed": failed, "output": "\n".join(summaries[-30:])})
+                self._jobs[job_id].update({"completed": completed, "failed": failed, "current_operation": None, "output": "\n".join(summaries[-30:])})
         with self._jobs_lock:
             self._jobs[job_id].update({
                 "status": "completed" if failed == 0 else "failed", "current": None,
@@ -1188,6 +1199,9 @@ class App:
 
     def _run_apply(self, job_id: str, plan_id: str, plan: RenamePlan) -> None:
         journal = self.settings.work_root / plan_id / "rollback.jsonl"
+        def report_progress(count: int, operation: RenameOperation) -> None:
+            with self._jobs_lock:
+                self._jobs[job_id].update({"completed_operations": count, "current_operation": operation.target})
         try:
             completed = execute_plan(
                 plan,
@@ -1196,6 +1210,7 @@ class App:
                 execute=True,
                 confirm_root=plan.root,
                 confirm_count=len(plan.operations),
+                on_progress=report_progress,
             )
             final_path = plan.root
             for operation in plan.operations:
@@ -1211,6 +1226,8 @@ class App:
             update = {
                 "status": "completed",
                 "operations": len(completed),
+                "completed_operations": len(completed),
+                "current_operation": None,
                 "path": final_path,
                 "journal": str(journal),
                 "refresh_job": refresh_job,

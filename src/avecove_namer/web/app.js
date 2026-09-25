@@ -259,14 +259,23 @@ async function pollNamerJob(jobId) {
   const target = $('#namer-result');
   try {
     const job = await api(`/api/jobs/${jobId}`);
+    const progress = namerProgress(job);
     target.className = 'result-space job-card';
-    target.innerHTML = `<span class="status ${escapeHtml(job.status)}">${job.status === 'running' ? '执行中' : (job.status === 'completed' ? '已完成' : '失败')}</span><h3>${job.status === 'running' ? `正在执行 ${job.operations} 项改名` : (job.status === 'completed' ? `${job.operations} 项改名已完成` : '改名任务失败')}</h3><p>${escapeHtml(job.path)}</p>${job.output ? `<pre>${escapeHtml(job.output)}</pre>` : '<p>操作正在服务器后台安全执行，并逐项写入回滚记录。</p>'}${job.status === 'completed' ? '<button class="secondary" id="view-refresh-job">查看 Emby 刷新进度</button>' : ''}`;
+    target.innerHTML = `<span class="status ${escapeHtml(job.status)}">${job.status === 'running' ? '执行中' : (job.status === 'completed' ? '已完成' : '失败')}</span><h3>${job.status === 'running' ? '正在执行改名' : (job.status === 'completed' ? '改名已完成' : '改名任务失败')}</h3><p>${escapeHtml(job.path)}</p>${progress}${job.output ? `<pre>${escapeHtml(job.output)}</pre>` : '<p>操作正在服务器后台安全执行，并逐项写入回滚记录。</p>'}${job.status === 'completed' ? '<button class="secondary" id="view-refresh-job">查看 Emby 刷新进度</button>' : ''}`;
     if (job.status === 'running') setTimeout(() => pollNamerJob(jobId), 2500);
     else if (job.status === 'completed') {
       toast('改名完成，Emby 刷新已开始');
       $('#view-refresh-job').addEventListener('click', () => { switchView('emby'); pollJob(job.refresh_job); });
     } else toast('改名任务失败，请查看错误信息', true);
   } catch (error) { fail(target, error); }
+}
+
+function namerProgress(job) {
+  const total = Math.max(0, Number(job.operations) || 0);
+  const done = Math.min(total, Math.max(0, Number(job.completed_operations) || 0));
+  const percent = total ? Math.round(done / total * 100) : 0;
+  const directory = job.total ? `<span>目录 ${Math.min(job.total, (Number(job.completed) || 0) + (Number(job.failed) || 0))}/${job.total}</span>` : '';
+  return `<div class="namer-progress" role="progressbar" aria-label="Namer 改名进度" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}"><div class="namer-progress-meta"><strong>${done} / ${total} 项</strong><span>${percent}%</span>${directory}</div><div class="namer-progress-track"><div class="namer-progress-fill" style="width:${percent}%"></div></div>${job.current ? `<small>当前目录：${escapeHtml(job.current)}</small>` : ''}${job.current_operation ? `<small>最近完成：${escapeHtml(job.current_operation)}</small>` : ''}</div>`;
 }
 
 async function loadDetective() {
@@ -449,7 +458,7 @@ async function pollNamerBatchJob(jobId) {
   try {
     const job = await api(`/api/jobs/${jobId}`);
     target.className = 'result-space job-card';
-    target.innerHTML = `<span class="status ${escapeHtml(job.status)}">${job.status === 'running' ? '执行中' : (job.status === 'completed' ? '已完成' : '部分失败')}</span><h3>${job.status === 'running' ? `正在串行改名 ${job.completed || 0}/${job.total}` : `批量改名完成 ${job.completed || 0}/${job.total}`}</h3>${job.current ? `<p>当前：${escapeHtml(job.current)}</p>` : ''}${job.output ? `<pre>${escapeHtml(job.output)}</pre>` : '<p>服务器一次只处理一个目录，页面可以关闭。</p>'}`;
+    target.innerHTML = `<span class="status ${escapeHtml(job.status)}">${job.status === 'running' ? '执行中' : (job.status === 'completed' ? '已完成' : '部分失败')}</span><h3>${job.status === 'running' ? `正在串行改名第 ${job.current_index || 1}/${job.total} 个目录` : `批量改名完成 ${job.completed || 0}/${job.total}`}</h3>${namerProgress(job)}${job.output ? `<pre>${escapeHtml(job.output)}</pre>` : '<p>服务器一次只处理一个目录，页面可以关闭。</p>'}`;
     if (job.status === 'running') setTimeout(() => pollNamerBatchJob(jobId), 2500);
     else { namerQueue.clear(); updateNamerQueue(); loadNamerInbox(); toast(job.status === 'completed' ? '批量改名完成' : '部分目录失败，请查看结果', job.status !== 'completed'); }
   } catch (error) { fail(target, error); }
