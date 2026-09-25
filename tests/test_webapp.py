@@ -175,6 +175,28 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(result["pending_count"], 1)
             self.assertEqual(result["pending"][0]["reason"], "subscription_update")
 
+    def test_namer_pending_hides_verified_completed_items_but_keeps_new_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            settings = Settings(
+                host="127.0.0.1", port=8787, openlist_url="http://127.0.0.1:5245",
+                openlist_token_file=root / "openlist.token", tmdb_token_file=root / "tmdb.token",
+                work_root=root / "jobs", detective_summary=root / "detective/last-summary.json",
+                refresh_worker=root / "refresh.py", media_index_root=root / "media",
+                namer_completed_state=root / "namer-completed.json",
+            )
+            app = App(settings)
+            done = {"path": "/123/00影/01外/Done (2020) {tmdb=1}", "name": "Done (2020) {tmdb=1}", "kind": "movie", "provider": "123", "category": "01外", "reason": "subscription_update", "modified": "2026-09-24T01:00:00Z"}
+            fresh = {"path": "/115/00剧/01美/Fresh (2026) {tmdb=2}", "name": "Fresh (2026) {tmdb=2}", "kind": "tv", "provider": "115", "category": "01美", "reason": "subscription_update", "modified": "2026-09-25T01:00:00Z"}
+            container = {"path": "/115/00影/01国/总其他", "name": "总其他", "kind": "movie", "provider": "115", "category": "01国", "reason": "new_title", "modified": "2026-09-20T01:00:00Z"}
+            app.emby_pending = lambda: {"mode": "shallow", "pending_count": 3, "pending": [done, fresh, container], "errors": []}
+            app._namer_completed_fingerprints = lambda: {done["path"]: "known"}
+            app._known_namer_candidate_needs_work = lambda item, expected: False
+            result = app.namer_pending()
+            self.assertEqual(result["pending_count"], 1)
+            self.assertEqual(result["pending"][0]["path"], fresh["path"])
+            self.assertEqual(result["filtered_completed"], 2)
+
     def test_emby_duplicate_plan_keeps_one_episode_and_only_previews_cleanup(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

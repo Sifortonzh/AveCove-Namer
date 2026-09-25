@@ -334,7 +334,11 @@ function groupByProvider(items) {
   }, {});
 }
 
-async function fetchPending() {
+async function fetchNamerPending() {
+  return api('/api/namer/pending');
+}
+
+async function fetchEmbyPending() {
   return api('/api/emby/pending');
 }
 
@@ -370,12 +374,12 @@ async function loadNamerInbox() {
   target.className = 'inbox-loading-wrap';
   target.innerHTML = '<div class="inbox-loading-card"><span></span><div><strong>正在检测新资源</strong><small>只读浅层检查，不读取视频</small></div></div>';
   try {
-    const data = await fetchPending();
+    const data = await fetchNamerPending();
     namerPendingItems = data.pending;
     const grouped = groupByProvider(data.pending);
     target.className = 'inbox-panel';
     const providerSummary = Object.entries(grouped).map(([provider, items]) => `<span><b>${escapeHtml(providerLabel(provider))}</b>${items.length}</span>`).join('');
-    target.innerHTML = `<div class="inbox-heading"><div class="inbox-title"><span class="inbox-orb">✦</span><div><strong>新增与订阅更新</strong><span>按网盘更新时间排序，选择后统一预览与执行</span></div></div><div class="inbox-total"><b>${data.pending_count}</b><span>待处理</span></div></div><div class="provider-summary">${providerSummary || '<span><b>已清空</b>0</span>'}</div>${Object.entries(grouped).length ? `<div class="inbox-body">${Object.entries(grouped).map(([provider, items]) => `<section class="provider-task-group"><div class="provider-task-head"><div><strong>${escapeHtml(providerLabel(provider))}</strong><span>${items.length} 项待处理</span></div><button class="mini-button namer-add-provider" type="button" data-provider="${escapeHtml(provider)}">本盘一键加入</button></div><div class="compact-task-list">${items.map(item => `<button class="compact-task namer-inbox-item" type="button" data-path="${escapeHtml(item.path)}" data-kind="${escapeHtml(item.kind)}"><span>${escapeHtml(item.name)}</span><small>${item.reason === 'subscription_update' ? '订阅更新' : '新入库'} · ${item.kind === 'movie' ? '电影' : '剧集'} · ${escapeHtml(item.category)}<i>加入队列 →</i></small></button>`).join('')}</div></section>`).join('')}</div>` : '<div class="history-empty inbox-empty">没有发现新入库或订阅更新。</div>'}`;
+    target.innerHTML = `<div class="inbox-heading"><div class="inbox-title"><span class="inbox-orb">✦</span><div><strong>真正需要改名的资源</strong><span>已核验实际改名动作${data.filtered_completed ? ` · 自动隐藏 ${data.filtered_completed} 个已完成项目` : ''}</span></div></div><div class="inbox-total"><b>${data.pending_count}</b><span>待处理</span></div></div><div class="provider-summary">${providerSummary || '<span><b>已清空</b>0</span>'}</div>${Object.entries(grouped).length ? `<div class="inbox-body">${Object.entries(grouped).map(([provider, items]) => `<section class="provider-task-group"><div class="provider-task-head"><div><strong>${escapeHtml(providerLabel(provider))}</strong><span>${items.length} 项待处理</span></div><button class="mini-button namer-add-provider" type="button" data-provider="${escapeHtml(provider)}">本盘一键加入</button></div><div class="compact-task-list">${items.map(item => `<button class="compact-task namer-inbox-item" type="button" data-path="${escapeHtml(item.path)}" data-kind="${escapeHtml(item.kind)}"><span>${escapeHtml(item.name)}</span><small>${item.reason === 'subscription_update' ? '订阅更新' : '新入库'} · ${item.kind === 'movie' ? '电影' : '剧集'} · ${escapeHtml(item.category)}<i>加入队列 →</i></small></button>`).join('')}</div></section>`).join('')}</div>` : '<div class="history-empty inbox-empty">没有发现仍需改名的资源。</div>'}`;
     $$('.namer-inbox-item').forEach(button => button.addEventListener('click', () => {
       const item = namerPendingItems.find(value => value.path === button.dataset.path);
       if (!item) return;
@@ -491,7 +495,7 @@ async function loadEmbyPending() {
   const target = $('#emby-pending');
   loading(target, '正在按网盘收集待刷新项目');
   try {
-    const data = await fetchPending();
+    const data = await fetchEmbyPending();
     const grouped = groupByProvider(data.pending);
     target.className = 'result-space result-card';
     target.innerHTML = `<div class="result-toolbar"><div><strong>${data.pending_count ? `${data.pending_count} 个项目尚未进入 Emby` : '当前没有待刷新项目'}</strong><div class="meta">已检查 ${data.scanned_roots} 个分类 · 云盘 ${data.cloud_titles} 项 · 已入库 ${data.present_titles} 项</div></div><span class="status ${data.pending_count ? 'planned' : 'compliant'}">${data.pending_count ? '待收集' : '已同步'}</span></div><div class="provider-groups">${Object.entries(grouped).map(([provider, items]) => `<section class="provider-task-group"><div class="provider-task-head"><div><strong>${escapeHtml(providerLabel(provider))}</strong><span>${items.length} 项待刷新</span></div><button class="mini-button queue-provider" type="button" data-provider="${escapeHtml(provider)}">加入本盘全部</button></div><div class="compact-task-list">${items.map(item => `<article class="compact-task-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.category)}</small></div><button class="mini-button queue-item" type="button" data-path="${escapeHtml(item.path)}">加入集合</button></article>`).join('')}</div></section>`).join('') || '<div class="history-empty">云盘作品目录均已存在于 Emby STRM 索引。</div>'}</div>`;

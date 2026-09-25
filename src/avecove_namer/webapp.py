@@ -25,7 +25,7 @@ import urllib.request
 from urllib.parse import parse_qs, urlparse
 
 from .backends import BackendError, OpenListBackend
-from .detective import _find_movie_tmdb_id, _find_tv_tmdb_id, infer_search_terms
+from .detective import _find_movie_tmdb_id, _find_tv_tmdb_id, fingerprint, infer_search_terms
 from .executor import ExecutionError, execute_plan
 from .models import RenamePlan
 from .naming import NamingPolicy
@@ -173,6 +173,7 @@ class Settings:
     emby_auth_db: Path = Path("/opt/docker/emby/config/data/authentication.db")
     emby_username: str = "zhongyunxing"
     manual_history: Path = Path("/opt/docker/avecove-namer/manual-history.jsonl")
+    namer_completed_state: Path = Path("/opt/docker/avecove-namer/namer-completed.json")
 
     @classmethod
     def from_env(cls, host: str, port: int) -> "Settings":
@@ -190,6 +191,7 @@ class Settings:
             emby_auth_db=Path(os.getenv("AVECOVE_EMBY_AUTH_DB", "/opt/docker/emby/config/data/authentication.db")),
             emby_username=os.getenv("AVECOVE_EMBY_USERNAME", "zhongyunxing"),
             manual_history=Path(os.getenv("AVECOVE_MANUAL_HISTORY", "/opt/docker/avecove-namer/manual-history.jsonl")),
+            namer_completed_state=Path(os.getenv("AVECOVE_NAMER_COMPLETED_STATE", "/opt/docker/avecove-namer/namer-completed.json")),
         )
 
 
@@ -202,6 +204,7 @@ class App:
         self._cloud_cache: dict[str, tuple[float, list[dict[str, object]]]] = {}
         self._cloud_cache_lock = threading.Lock()
         self._manual_history_lock = threading.Lock()
+        self._namer_completed_lock = threading.Lock()
 
     def tmdb(self) -> TMDBClient:
         return TMDBClient(read_secret(self.settings.tmdb_token_file))
@@ -389,6 +392,123 @@ class App:
             "pending_count": len(unique),
             "pending": unique,
             "errors": errors,
+        }
+
+    def _namer_completed_fingerprints(self) -> dict[str, str]:
+        """Merge automatic Detective baselines with manual Namer completions."""
+        completed: dict[str, str] = {}
+        state_root = self.settings.detective_summary.parent
+        state_files = [state_root / "state.json", *sorted(state_root.glob("*/state.json"))]
+        for state_path in state_files:
+            if not state_path.is_file():
+                continue
+            try:
+                works = json.loads(state_path.read_text(encoding="utf-8")).get("works") or {}
+            except (OSError, json.JSONDecodeError):
+                continue
+            for path, signature in works.items():
+                value = str(signature or "")
+                if value and not value.startswith("pending:"):
+                    completed[str(path)] = value
+        state_path = self.settings.namer_completed_state
+        if state_path.is_file():
+            try:
+                works = json.loads(state_path.read_text(encoding="utf-8")).get("works") or {}
+            except (OSError, json.JSONDecodeError):
+                works = {}
+            completed.update({str(path): str(signature) for path, signature in works.items() if signature})
+        return completed
+
+    def _remember_namer_completion(self, path: str, signature: str) -> None:
+        state_path = self.settings.namer_completed_state
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._namer_completed_lock:
+            data: dict[str, Any] = {"version": 1, "works": {}}
+            if state_path.is_file():
+                try:
+                    loaded = json.loads(state_path.read_text(encoding="utf-8"))
+                    if isinstance(loaded, dict):
+                        data = loaded
+                except (OSError, json.JSONDecodeError):
+                    pass
+            works = data.setdefault("works", {})
+            if not isinstance(works, dict):
+                works = {}
+                data["works"] = works
+            works[path] = signature
+            data["updated_at"] = utc_now()
+            temporary = state_path.with_suffix(state_path.suffix + ".tmp")
+            temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            os.replace(temporary, state_path)
+
+    def _known_namer_candidate_needs_work(self, item: dict[str, str], expected: str) -> bool:
+        path = item["path"]
+        entries = self.openlist().scan(path, refresh=True)
+        current_signature = fingerprint(entries)
+        if current_signature == expected:
+            return False
+        tmdb_id = media_tmdb_id(PurePosixPath(path).name)
+        if not tmdb_id:
+            return True
+        kind = item["kind"]
+        resolved = self.tmdb().resolve_title(int(tmdb_id), kind, "auto")
+        plan = make_plan(
+            entries,
+            path,
+            self.openlist().name,
+            NamingPolicy(),
+            str(resolved["title"]),
+            int(resolved["year"]) if resolved.get("year") else None,
+            True,
+            int(tmdb_id),
+            str(resolved["primary_language"]),
+            kind,
+            root_title_override=str(resolved["title"]),
+        )
+        # A source-language parent name is allowed. Only child/media changes
+        # mean the work still belongs in the Namer inbox.
+        remaining = [operation for operation in plan.operations if operation.kind != "rename_directory"]
+        if not remaining and not plan.conflicts:
+            self._remember_namer_completion(path, current_signature)
+            return False
+        return True
+
+    def namer_pending(self) -> dict[str, Any]:
+        """Return only entries that still have real naming work to perform."""
+        result = self.emby_pending()
+        completed = self._namer_completed_fingerprints()
+        pending: list[dict[str, str]] = []
+        checks: list[tuple[dict[str, str], str]] = []
+        filtered = 0
+        for item in result["pending"]:
+            # This is a container below the 115 movie category, not a title.
+            if item["kind"] == "movie" and item["name"] in {"总其他"}:
+                filtered += 1
+                continue
+            expected = completed.get(item["path"])
+            if expected:
+                checks.append((item, expected))
+            else:
+                pending.append(item)
+        if checks:
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                futures = [(item, executor.submit(self._known_namer_candidate_needs_work, item, expected)) for item, expected in checks]
+                for item, future in futures:
+                    try:
+                        if future.result():
+                            pending.append(item)
+                        else:
+                            filtered += 1
+                    except (BackendError, TMDBError, ValueError):
+                        # Never hide a candidate when verification is uncertain.
+                        pending.append(item)
+        pending.sort(key=lambda item: media_modified_timestamp(item.get("modified")) or 0, reverse=True)
+        return {
+            **result,
+            "pending_count": len(pending),
+            "pending": pending,
+            "filtered_completed": filtered,
+            "mode": "verified_namer",
         }
 
     def emby_residuals(self) -> dict[str, Any]:
@@ -931,6 +1051,8 @@ class App:
         job_dir = self.settings.work_root / plan_id
         job_dir.mkdir(mode=0o700)
         write_plan(plan, str(job_dir / "plan.json"), str(job_dir / "plan.csv"))
+        if not plan.operations and not plan.conflicts:
+            self._remember_namer_completion(path, fingerprint(entries))
         return {"plan_id": plan_id, "resolved": resolved, **plan.to_dict()}
 
     def apply_plan(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1028,6 +1150,11 @@ class App:
                     plan.root,
                 )
                 refresh_paths.append(final_path)
+                try:
+                    final_entries = self.openlist().scan(final_path, refresh=True)
+                    self._remember_namer_completion(final_path, fingerprint(final_entries))
+                except (BackendError, OSError):
+                    pass
                 completed += 1
                 summaries.append(f"[{index}/{len(plans)}] 改名完成：{final_path}")
             except Exception as exc:
@@ -1057,6 +1184,11 @@ class App:
                 if operation.kind == "rename_directory" and operation.source == plan.root:
                     final_path = operation.target
                     break
+            try:
+                final_entries = self.openlist().scan(final_path, refresh=True)
+                self._remember_namer_completion(final_path, fingerprint(final_entries))
+            except (BackendError, OSError):
+                pass
             refresh_job = self.start_refresh(final_path)
             update = {
                 "status": "completed",
@@ -1275,6 +1407,9 @@ def handler_factory(app: App):
                     return
                 if path == "/api/emby/pending":
                     self.json_response(HTTPStatus.OK, app.emby_pending())
+                    return
+                if path == "/api/namer/pending":
+                    self.json_response(HTTPStatus.OK, app.namer_pending())
                     return
                 if path == "/api/emby/residuals":
                     self.json_response(HTTPStatus.OK, app.emby_residuals())
