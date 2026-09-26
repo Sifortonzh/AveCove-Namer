@@ -60,6 +60,9 @@ class TMDBClient:
                     "year": int(date[:4]) if isinstance(date, str) and len(date) >= 4 else None,
                     "language": item.get("original_language"),
                     "popularity": item.get("popularity"),
+                    "overview": item.get("overview"),
+                    "poster_path": item.get("poster_path"),
+                    "rating": item.get("vote_average"),
                 }
             )
         return output
