@@ -216,12 +216,38 @@ class WebAppTests(unittest.TestCase):
             fresh = {"path": "/115/00剧/01美/Fresh raw 2026", "name": "Fresh raw 2026", "kind": "tv", "provider": "115", "category": "01美", "reason": "new_title", "modified": "2026-09-25T01:00:00Z"}
             container = {"path": "/115/00影/01国/总其他", "name": "总其他", "kind": "movie", "provider": "115", "category": "01国", "reason": "new_title", "modified": "2026-09-20T01:00:00Z"}
             app.emby_pending = lambda: {"mode": "shallow", "pending_count": 3, "pending": [done, fresh, container], "errors": []}
+            app.openlist = lambda: type("EmptyBackend", (), {"list_directories": lambda self, path, refresh=False: []})()
             app._namer_completed_fingerprints = lambda: {done["path"]: "known"}
             app._known_namer_candidate_needs_work = lambda item, expected: False
             result = app.namer_pending()
             self.assertEqual(result["pending_count"], 1)
             self.assertEqual(result["pending"][0]["path"], fresh["path"])
             self.assertEqual(result["filtered_completed"], 2)
+
+    def test_namer_pending_sees_grouped_movie_even_when_already_in_emby(self):
+        class Backend:
+            def list_directories(self, root, refresh=False):
+                if root == "/115/00影/01国":
+                    return [{"name": "总其他"}]
+                if root == "/115/00影/01国/总其他":
+                    return [{"name": "苹果 (2007)"}]
+                return []
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            settings = Settings(
+                host="127.0.0.1", port=8787, openlist_url="http://127.0.0.1:5245",
+                openlist_token_file=root / "openlist.token", tmdb_token_file=root / "tmdb.token",
+                work_root=root / "jobs", detective_summary=root / "summary.json",
+                refresh_worker=root / "refresh.py", media_index_root=root / "media",
+            )
+            app = App(settings)
+            app.openlist = lambda: Backend()
+            app.emby_pending = lambda: {"mode": "shallow", "pending_count": 0, "pending": [], "errors": []}
+            app._namer_completed_fingerprints = lambda: {}
+            result = app.namer_pending()
+            self.assertEqual(result["pending_count"], 1)
+            self.assertEqual(result["pending"][0]["path"], "/115/00影/01国/总其他/苹果 (2007)")
 
     def test_emby_duplicate_plan_keeps_one_episode_and_only_previews_cleanup(self):
         with tempfile.TemporaryDirectory() as directory:

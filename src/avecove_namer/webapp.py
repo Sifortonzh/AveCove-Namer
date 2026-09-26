@@ -499,11 +499,42 @@ class App:
     def namer_pending(self) -> dict[str, Any]:
         """Return only entries that still have real naming work to perform."""
         result = self.emby_pending()
+        candidates = {item["path"]: item for item in result["pending"]}
+        # A movie can already have STRM files in Emby while its cloud folder
+        # still needs Namer. Inspect known grouping folders independently.
+        backend = self.openlist()
+        for root in CLOUD_LIBRARY_ROOTS["movie"]:
+            if not root.endswith("/01国"):
+                continue
+            try:
+                groups = self._cloud_directories(backend, root)
+            except BackendError:
+                continue
+            for group in groups:
+                group_name = str(group.get("name") or "").strip()
+                if group_name not in MOVIE_GROUP_DIRS:
+                    continue
+                group_root = str(PurePosixPath(root) / group_name)
+                try:
+                    titles = self._cloud_directories(backend, group_root)
+                except BackendError:
+                    continue
+                for title in titles:
+                    name = str(title.get("name") or "").strip()
+                    if not name:
+                        continue
+                    path = str(PurePosixPath(group_root) / name)
+                    candidates[path] = {
+                        "provider": PurePosixPath(root).parts[1],
+                        "category": f"01国 / {group_name}",
+                        "kind": "movie", "name": name, "path": path,
+                        "reason": "new_title", "modified": str(title.get("modified") or ""),
+                    }
         completed = self._namer_completed_fingerprints()
         pending: list[dict[str, str]] = []
         checks: list[tuple[dict[str, str], str | None]] = []
         filtered = 0
-        for item in result["pending"]:
+        for item in candidates.values():
             # This is a container below the 115 movie category, not a title.
             if item["kind"] == "movie" and item["name"] in {"总其他"}:
                 filtered += 1
