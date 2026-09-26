@@ -149,6 +149,32 @@ class WebAppTests(unittest.TestCase):
             movie = next(item for item in result["pending"] if item["path"].startswith("/115/00影/01外/"))
             self.assertEqual(movie["kind"], "movie")
 
+    def test_emby_pending_expands_movie_group_without_listing_the_container(self):
+        class Backend:
+            def list_directories(self, root, refresh=False):
+                if root == "/115/00影/01国":
+                    return [{"name": "总其他"}]
+                if root == "/115/00影/01国/总其他":
+                    return [{"name": "苹果 (2007)"}, {"name": "手机（2003）"}]
+                return []
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            settings = Settings(
+                host="127.0.0.1", port=8787, openlist_url="http://127.0.0.1:5245",
+                openlist_token_file=root / "openlist.token", tmdb_token_file=root / "tmdb.token",
+                work_root=root / "jobs", detective_summary=root / "summary.json",
+                refresh_worker=root / "refresh.py", media_index_root=root / "media",
+            )
+            app = App(settings)
+            app.openlist = lambda: Backend()
+            result = app.emby_pending()
+            paths = {item["path"] for item in result["pending"]}
+            self.assertIn("/115/00影/01国/总其他/苹果 (2007)", paths)
+            self.assertIn("/115/00影/01国/总其他/手机（2003）", paths)
+            self.assertNotIn("/115/00影/01国/总其他", paths)
+            self.assertTrue(all(item["kind"] == "movie" for item in result["pending"]))
+
     def test_emby_pending_detects_subscription_update_by_modified_time(self):
         class Backend:
             def list_directories(self, root, refresh=False):

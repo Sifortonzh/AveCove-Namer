@@ -71,6 +71,7 @@ CLOUD_LIBRARY_ROOTS = {
         "/Quark/00影/01国", "/Quark/00影/01外", "/Quark/00影",
     ),
 }
+MOVIE_GROUP_DIRS = {"总其他"}
 
 AUTOMATION_TIMERS = (
     "avecove-namer-detective-115.timer",
@@ -337,14 +338,27 @@ class App:
         category_roots = [root for root in roots if len(PurePosixPath(root).parts) >= 4]
         with ThreadPoolExecutor(max_workers=4) as executor:
             listings = {root: executor.submit(self._cloud_directories, backend, root) for root in category_roots}
+            resolved_listings: list[tuple[str, list[dict[str, object]]]] = []
             for root, future in listings.items():
                 try:
                     directories = future.result()
                 except BackendError as exc:
                     errors.append({"root": root, "error": str(exc)})
                     continue
+                resolved_listings.append((root, directories))
+                if root in CLOUD_LIBRARY_ROOTS["movie"]:
+                    for item in directories:
+                        group_name = str(item.get("name") or "").strip()
+                        if group_name not in MOVIE_GROUP_DIRS:
+                            continue
+                        group_root = str(PurePosixPath(root) / group_name)
+                        try:
+                            resolved_listings.append((group_root, self._cloud_directories(backend, group_root)))
+                        except BackendError as exc:
+                            errors.append({"root": group_root, "error": str(exc)})
+            for root, directories in resolved_listings:
                 scanned_roots += 1
-                media_kind = "movie" if root in CLOUD_LIBRARY_ROOTS["movie"] else "tv"
+                media_kind = "movie" if any(root == movie_root or root.startswith(movie_root + "/") for movie_root in CLOUD_LIBRARY_ROOTS["movie"]) else "tv"
                 local_root = self.settings.media_index_root / root.lstrip("/")
                 local_tmdb_ids: set[str] = set()
                 local_names: set[str] = set()
@@ -368,7 +382,7 @@ class App:
                             local_name_latest[normalized] = max(local_name_latest.get(normalized, 0), latest)
                 for item in directories:
                     name = str(item.get("name") or "").strip()
-                    if not name:
+                    if not name or (media_kind == "movie" and name in MOVIE_GROUP_DIRS):
                         continue
                     cloud_titles += 1
                     tmdb_id = media_tmdb_id(name)
@@ -383,7 +397,7 @@ class App:
                     path = str(PurePosixPath(root) / name)
                     pending.append({
                         "provider": PurePosixPath(root).parts[1],
-                        "category": PurePosixPath(root).name,
+                        "category": " / ".join(PurePosixPath(root).parts[-2:]) if PurePosixPath(root).name in MOVIE_GROUP_DIRS else PurePosixPath(root).name,
                         "kind": media_kind,
                         "name": name,
                         "path": path,
