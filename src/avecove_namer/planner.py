@@ -31,15 +31,37 @@ def sibling_path(source: str, target_name: str) -> str:
     return str(PurePosixPath(source).parent / target_name)
 
 
-PARENT_SEASON_RE = re.compile(r"(?i)(?:^|[^a-z0-9])(?:season|s)[ ._-]*0*(\d{1,2})(?:[^0-9]|$)")
-PARENT_CHINESE_SEASON_RE = re.compile(r"第[ ._-]*0*(\d{1,2})[ ._-]*季")
+PARENT_SEASON_RE = re.compile(r"(?i)(?:^|[^a-z0-9])(?:season|s)[ ._-]*0*(\d{1,2})(?![a-z0-9])")
+PARENT_CHINESE_SEASON_RE = re.compile(r"第[ ._-]*([一二三四五六七八九十\d]{1,3})[ ._-]*季")
+CHINESE_DIGITS = {char: number for number, char in enumerate("一二三四五六七八九", 1)}
+
+
+def _season_from_folder(name: str) -> int | None:
+    match = PARENT_SEASON_RE.search(name)
+    if match:
+        number = int(match.group(1))
+        return number if number > 0 else None
+    match = PARENT_CHINESE_SEASON_RE.search(name)
+    if not match:
+        return None
+    token = match.group(1)
+    if token.isdecimal():
+        number = int(token)
+    elif token == "十":
+        number = 10
+    elif "十" in token:
+        tens, ones = token.split("十", 1)
+        number = (CHINESE_DIGITS.get(tens, 1) if tens else 1) * 10 + (CHINESE_DIGITS.get(ones, 0) if ones else 0)
+    else:
+        number = CHINESE_DIGITS.get(token, 0)
+    return number if 0 < number < 100 else None
 
 
 def _parent_season(path: str) -> int | None:
     for part in reversed(PurePosixPath(path).parts[:-1]):
-        match = PARENT_SEASON_RE.search(part) or PARENT_CHINESE_SEASON_RE.search(part)
-        if match:
-            return int(match.group(1))
+        season = _season_from_folder(part)
+        if season:
+            return season
     return None
 
 
@@ -59,10 +81,9 @@ def _subtitle_episode_key(entry: Entry) -> tuple[int, int] | None:
         return None
     episode = int(stem)
     for part in reversed(PurePosixPath(entry.path).parts[:-1]):
-        normalized = part.replace("第", "Season ").replace("季", "")
-        match = re.search(r"(?i)(?:^|[^a-z0-9])s(?:eason)?[ ._-]*0*(\d{1,2})(?:[^0-9]|$)", normalized)
-        if match:
-            return int(match.group(1)), episode
+        season = _season_from_folder(part)
+        if season:
+            return season, episode
     return None
 
 
@@ -231,6 +252,29 @@ def make_plan(
                 )
             )
 
+    if media_kind == "tv":
+        root_path = PurePosixPath(root.rstrip("/"))
+        season_directories: set[PurePosixPath] = set()
+        for entry in entries:
+            parent = PurePosixPath(entry.path).parent
+            while parent != root_path and root_path in parent.parents:
+                if _season_from_folder(parent.name):
+                    season_directories.add(parent)
+                parent = parent.parent
+        for source_dir in sorted(season_directories, key=lambda path: str(path).casefold()):
+            season = _season_from_folder(source_dir.name)
+            target_dir = source_dir.with_name(f"Season {season:02d}")
+            if target_dir != source_dir:
+                plan.operations.append(
+                    RenameOperation(
+                        source=str(source_dir),
+                        target=str(target_dir),
+                        kind="rename_directory",
+                        reason="normalized_season_folder",
+                        confidence=0.98,
+                    )
+                )
+
     targets: dict[str, list[str]] = defaultdict(list)
     for operation in plan.operations:
         targets[operation.target].append(operation.source)
@@ -243,6 +287,7 @@ def make_plan(
     plan.operations.sort(
         key=lambda operation: (
             operation.kind == "rename_directory",
+            -len(PurePosixPath(operation.source).parts) if operation.kind == "rename_directory" else 0,
             operation.source.casefold(),
             operation.kind,
         )

@@ -13,7 +13,8 @@ class PlannerTests(unittest.TestCase):
             Entry(path="/GuangYa/Show/Season 1/大海战宣传广告.mp4", size=2, modified="x"),
         ]
         plan = make_plan(entries, "/GuangYa/Show", "openlist", NamingPolicy(), "My Date with a Vampire", 1998, False, media_kind="tv")
-        self.assertEqual(len(plan.operations), 1)
+        self.assertEqual(len(plan.operations), 2)
+        self.assertEqual(plan.operations[-1].target, "/GuangYa/Show/Season 01")
         self.assertFalse(plan.conflicts)
         self.assertEqual(plan.skipped[0]["reason"], "tv_video_without_episode_or_disc")
 
@@ -29,7 +30,34 @@ class PlannerTests(unittest.TestCase):
             [
                 "Medici.Masters.of.Florence.2016.S02D01.Blu-ray1080iAVCDTS-HDMA5.1-DIY@TTG.iso",
                 "Medici.Masters.of.Florence.2016.S02D02.Blu-ray1080iAVCDTS-HDMA5.1-DIY@TTG.iso",
+                "Season 02",
             ],
+        )
+
+    def test_chinese_season_folder_with_release_tags_is_normalized(self):
+        root = "/TV/示例剧"
+        source_dir = f"{root}/【第一季】4k HDR.DV"
+        entries = [Entry(f"{source_dir}/Example.S01E01.2160p.mkv")]
+        plan = make_plan(entries, root, "openlist", NamingPolicy(), "Example", 2020, True, 123, "en", "tv")
+        self.assertFalse(plan.conflicts)
+        self.assertEqual(
+            [(operation.reason, operation.target) for operation in plan.operations if operation.kind == "rename_directory"],
+            [
+                ("normalized_season_folder", f"{root}/Season 01"),
+                ("origin_aware_tmdb_root_folder", "/TV/Example (2020) {tmdb=123}"),
+            ],
+        )
+
+    def test_chinese_numeral_and_s_token_seasons_are_supported(self):
+        root = "/TV/Example (2020)"
+        entries = [
+            Entry(f"{root}/第十一季/Example.S11E01.mkv"),
+            Entry(f"{root}/S02 HDR/Example.S02E01.mkv"),
+        ]
+        plan = make_plan(entries, root, "openlist", NamingPolicy(), "Example", 2020, False, media_kind="tv")
+        self.assertEqual(
+            {operation.target for operation in plan.operations if operation.reason == "normalized_season_folder"},
+            {f"{root}/Season 11", f"{root}/Season 02"},
         )
 
     def test_episode_and_subtitle_are_planned_together(self):

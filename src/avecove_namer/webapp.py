@@ -490,7 +490,7 @@ class App:
         )
         # A source-language parent name is allowed. Only child/media changes
         # mean the work still belongs in the Namer inbox.
-        remaining = [operation for operation in plan.operations if operation.kind != "rename_directory"]
+        remaining = [operation for operation in plan.operations if operation.reason != "origin_aware_tmdb_root_folder"]
         if not remaining and not plan.conflicts:
             self._remember_namer_completion(path, current_signature)
             return False

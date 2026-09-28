@@ -112,6 +112,21 @@ class ExecutorTests(unittest.TestCase):
             rollback(backend, str(journal), execute=True)
             self.assertTrue(original_video.exists())
 
+    def test_season_and_root_folder_round_trip(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve() / "Example"
+            season = root / "【第一季】4k HDR.DV"
+            season.mkdir(parents=True)
+            original = season / "Example.S01E01.mkv"
+            original.touch()
+            backend = LocalBackend()
+            plan = make_plan(backend.scan(str(root)), str(root), "local", NamingPolicy(), "Example", 2020, True, 123, "en", "tv")
+            journal = Path(temp) / "season-rollback.jsonl"
+            execute_plan(plan, backend, str(journal), True, str(root), len(plan.operations))
+            self.assertTrue((Path(temp) / "Example (2020) {tmdb=123}" / "Season 01" / "Example.2020.S01E01.mkv").exists())
+            rollback(backend, str(journal), execute=True)
+            self.assertTrue(original.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
