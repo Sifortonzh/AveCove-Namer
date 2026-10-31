@@ -5,6 +5,29 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+def ranked_images(images: list[dict[str, object]], limit: int = 5) -> list[dict[str, object]]:
+    """Rank image votes, not programme votes; keep unrated images honest."""
+    unique: dict[str, dict[str, object]] = {}
+    for raw in images:
+        path = str(raw.get("file_path") or "")
+        if not re.fullmatch(r"/[A-Za-z0-9_-]+\.(?:jpg|png|webp)", path, re.IGNORECASE):
+            continue
+        item = dict(raw)
+        votes = int(item.get("vote_count") or 0)
+        item["vote_count"] = votes
+        item["vote_average"] = float(item.get("vote_average") or 0) if votes else None
+        item["preview_url"] = "https://image.tmdb.org/t/p/w500" + path
+        item["original_url"] = "https://image.tmdb.org/t/p/original" + path
+        previous = unique.get(path)
+        if previous is None or votes > int(previous.get("vote_count") or 0):
+            unique[path] = item
+    return sorted(unique.values(), key=lambda item: (
+        -int(bool(item["vote_count"])), -float(item["vote_average"] or 0),
+        -int(item["vote_count"]), -int(item.get("width") or 0), str(item["file_path"]),
+    ))[:limit]
 
 
 class TMDBError(RuntimeError):
@@ -37,6 +60,10 @@ class TMDBClient:
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 return json.load(response)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                raise TMDBError("TMDb 未找到该条目，请检查剧集、季号和集号") from exc
+            raise TMDBError(f"TMDb 请求失败（HTTP {exc.code}），请稍后重试") from exc
         except (urllib.error.URLError, json.JSONDecodeError) as exc:
             raise TMDBError(f"TMDB request failed: {exc}") from exc
 
@@ -178,6 +205,11 @@ class TMDBClient:
             raise TMDBError("TMDB kind must be tv or movie")
         return self._get(f"/{kind}/{tmdb_id}", {"language": language})
 
+    def collection(self, collection_id: int) -> dict[str, object]:
+        if collection_id < 1:
+            raise TMDBError("合集编号必须是正整数")
+        return self._get(f"/collection/{collection_id}", {"language": "zh-CN"})
+
     def resolve_title(self, tmdb_id: int, kind: str, style: str = "auto") -> dict[str, object]:
         if style not in {"auto", "english", "chinese", "original", "bilingual"}:
             raise TMDBError("Unsupported TMDB title style")
@@ -220,6 +252,81 @@ class TMDBClient:
             "chinese_title": chinese_title,
             "original_title": original_title,
         }
+
+    def episode_details(self, tmdb_id: int, season: int, episode: int) -> dict[str, object]:
+        """Fetch one episode, keeping source text separate from its translation."""
+        if tmdb_id < 1 or not 0 <= season <= 999 or not 1 <= episode <= 9999:
+            raise ValueError("剧集编号须为正整数，季号为 0–999，集号为 1–9999")
+        series = self.details(tmdb_id, "tv", "zh-CN")
+        language = str(series.get("original_language") or "en")
+        endpoint = f"/tv/{tmdb_id}/season/{season}/episode/{episode}"
+        original = self._get(endpoint, {"language": language})
+        translated = original if language == "zh-CN" else self._get(endpoint, {"language": "zh-CN"})
+        return {
+            "tmdb_id": tmdb_id, "season": season, "episode": episode,
+            "code": f"S{season:02d}E{episode:02d}",
+            "series_name": str(series.get("name") or series.get("original_name") or ""),
+            "original_series_name": str(series.get("original_name") or ""),
+            "original_language": language,
+            "name": str(original.get("name") or ""),
+            "translated_name": str(translated.get("name") or ""),
+            "overview": str(translated.get("overview") or original.get("overview") or ""),
+            "original_overview": str(original.get("overview") or ""),
+            "air_date": original.get("air_date"), "runtime": original.get("runtime"),
+            "rating": original.get("vote_average"), "vote_count": original.get("vote_count") or 0,
+            "detail_url": f"https://www.themoviedb.org/tv/{tmdb_id}/season/{season}/episode/{episode}",
+        }
+
+    def series_artwork(self, tmdb_id: int, season: int | None = None, on_progress=None) -> dict[str, object]:
+        if tmdb_id < 1 or (season is not None and not 0 <= season <= 999):
+            raise ValueError("剧集编号或季号无效")
+        details = self.details(tmdb_id, "tv", "zh-CN")
+        language = str(details.get("original_language") or "en")
+        seasons = sorted(({
+            "number": int(item["season_number"]), "name": str(item.get("name") or ""),
+            "episode_count": int(item.get("episode_count") or 0),
+        } for item in details.get("seasons", []) if isinstance(item, dict) and item.get("season_number") is not None), key=lambda item: item["number"])
+        if season is not None and season not in {item["number"] for item in seasons}:
+            raise ValueError("TMDb 没有该季，请从季列表中选择")
+        result = {
+            "tmdb_id": tmdb_id, "title": str(details.get("name") or ""),
+            "original_name": str(details.get("original_name") or details.get("name") or ""),
+            "original_language": language, "year": str(details.get("first_air_date") or "")[:4],
+            "overview": str(details.get("overview") or ""), "seasons": seasons,
+            "season": season, "episodes": [], "warnings": [],
+            "detail_url": f"https://www.themoviedb.org/tv/{tmdb_id}",
+        }
+        if season is None:
+            images = self._get(f"/tv/{tmdb_id}/images", {})
+            result.update(posters=ranked_images(images.get("posters") or []),
+                          backdrops=ranked_images(images.get("backdrops") or []), stills=[])
+            return result
+        source = self._get(f"/tv/{tmdb_id}/season/{season}", {"language": language})
+        result["season_name"] = str(source.get("name") or "")
+        episodes = sorted((item for item in source.get("episodes", []) if isinstance(item, dict) and item.get("episode_number")), key=lambda item: int(item["episode_number"]))
+        result["episodes"] = [{"season": season, "episode": int(item["episode_number"]),
+                               "name": str(item.get("name") or ""), "overview": str(item.get("overview") or ""),
+                               "air_date": item.get("air_date")} for item in episodes]
+        images = self._get(f"/tv/{tmdb_id}/season/{season}/images", {})
+        stills = []
+        if on_progress:
+            on_progress(0, len(episodes))
+        def fetch_episode(item):
+            number = int(item["episode_number"])
+            images = self._get(f"/tv/{tmdb_id}/season/{season}/episode/{number}/images", {})
+            return [{**image, "season": season, "episode": number} for image in images.get("stills", [])]
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = {pool.submit(fetch_episode, item): item for item in episodes}
+            for completed, future in enumerate(as_completed(futures), 1):
+                item = futures[future]
+                try:
+                    stills.extend(future.result())
+                except TMDBError:
+                    result["warnings"].append(f"E{int(item['episode_number']):02d} 剧照读取失败；本次排序仅包含成功读取的图片，可重试")
+                if on_progress:
+                    on_progress(completed, len(episodes))
+        result.update(posters=ranked_images(images.get("posters") or []), backdrops=[], stills=ranked_images(stills))
+        return result
 
     def original_episode_metadata(self, tmdb_id: int) -> dict[str, object]:
         """Return a TV series and every episode in its original language."""

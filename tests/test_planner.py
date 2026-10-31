@@ -3,10 +3,30 @@ from pathlib import PurePosixPath
 
 from avecove_namer.models import Entry
 from avecove_namer.naming import NamingPolicy
-from avecove_namer.planner import make_plan
+from avecove_namer.planner import _season_from_folder, make_plan, normalized_season_folder_name
 
 
 class PlannerTests(unittest.TestCase):
+    def test_long_season_collection_keeps_titles_and_three_digit_order(self):
+        self.assertEqual(_season_from_folder("Season 458 - 品读中华经典诗文（第二季）"), 458)
+        self.assertEqual(normalized_season_folder_name("Season 004 - 智慧的痛苦", 3), "Season 004 - 智慧的痛苦")
+        self.assertEqual(normalized_season_folder_name("Season 4 - 智慧的痛苦", 3), "Season 004 - 智慧的痛苦")
+        self.assertEqual(normalized_season_folder_name("【第一季】4k HDR.DV"), "Season 01")
+        root = "/Quark/00剧/01中/百家讲坛：专题集 (2001) [tmdbid=237020]"
+        entries = [
+            Entry(f"{root}/Season 1 - 物理的挑战/episode.mkv"),
+            Entry(f"{root}/Season 004 - 智慧的痛苦/episode.mkv"),
+            Entry(f"{root}/Season 458 - 品读中华经典诗文（第二季）/episode.mkv"),
+        ]
+        plan = make_plan(entries, root, "openlist", NamingPolicy(), media_kind="tv")
+        season_changes = {
+            operation.source: operation.target for operation in plan.operations
+            if operation.reason == "normalized_season_folder"
+        }
+        self.assertEqual(season_changes, {
+            f"{root}/Season 1 - 物理的挑战": f"{root}/Season 001 - 物理的挑战",
+        })
+
     def test_tv_mode_skips_promotional_video_without_episode_or_disc(self):
         entries = [
             Entry(path="/GuangYa/Show/Season 1/Show.E01.1080p.mkv", size=10, modified="x"),

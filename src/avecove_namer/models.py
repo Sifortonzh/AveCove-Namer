@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 
 MediaKind = Literal["movie", "episode", "disc", "subtitle", "other"]
-OperationKind = Literal["rename_video", "rename_subtitle", "rename_directory"]
+OperationKind = Literal["rename_video", "rename_subtitle", "rename_directory", "create_directory"]
 
 
 @dataclass(frozen=True)
@@ -14,6 +14,8 @@ class Entry:
     is_dir: bool = False
     size: int | None = None
     modified: str | None = None
+    file_id: str | None = None
+    account_id: str | None = None
 
     @property
     def name(self) -> str:

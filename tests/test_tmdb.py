@@ -48,6 +48,30 @@ class TMDBClientTests(unittest.TestCase):
         self.assertEqual(resolved["title"], "漫长的季节")
         self.assertEqual(resolved["primary_language"], "zh")
 
+    def test_episode_details_fetches_only_requested_episode_in_source_and_chinese(self):
+        client = TMDBClient("test-token")
+        client.details = lambda *args: {"name": "权力的游戏", "original_name": "Game of Thrones", "original_language": "en"}
+        calls = []
+        def fake_get(endpoint, params):
+            calls.append((endpoint, params))
+            return {"name": "Winter Is Coming" if params["language"] == "en" else "凛冬将至", "overview": "简介", "vote_average": 8.5, "vote_count": 10}
+        client._get = fake_get
+        result = client.episode_details(1399, 1, 1)
+        self.assertEqual(result["code"], "S01E01")
+        self.assertEqual(result["name"], "Winter Is Coming")
+        self.assertEqual(result["translated_name"], "凛冬将至")
+        self.assertEqual([call[0] for call in calls], ["/tv/1399/season/1/episode/1"] * 2)
+        self.assertEqual([call[1]["language"] for call in calls], ["en", "zh-CN"])
+
+    def test_episode_details_allows_specials_and_rejects_invalid_numbers(self):
+        client = TMDBClient("test-token")
+        client.details = lambda *args: {"original_language": "zh-CN"}
+        client._get = lambda *args: {}
+        self.assertEqual(client.episode_details(1399, 0, 1)["code"], "S00E01")
+        for args in [(0, 1, 1), (1399, -1, 1), (1399, 1, 0)]:
+            with self.assertRaises(ValueError):
+                client.episode_details(*args)
+
     def test_original_episode_metadata_uses_original_language_for_each_season(self):
         client = TMDBClient("0123456789abcdef0123456789abcdef")
         client.details = lambda tmdb_id, kind, language: {

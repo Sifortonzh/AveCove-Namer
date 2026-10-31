@@ -1,13 +1,114 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const titles = { tmdb: 'TMDb 查询', namer: 'Namer', detective: '识别记录', emby: 'Emby 刷新' };
+const titles = { tmdb: 'TMDb 查询', namer: 'Namer', detective: '识别记录' };
 let mediaKind = 'tv';
 let lastSourceData = null;
-let embyPendingLoaded = false;
-let namerInboxLoaded = false;
-const embyQueue = new Map();
+let savedSeries = new Map();
+let shelfFilter = 'all';
+let shelfRefreshTimer;
+let watchedEditingId = null;
+function watchDateToday() { return new Date(Date.now() + 8 * 3600000).toISOString().slice(0,10); }
+function watchedShelfItems(items) {
+  return items.filter(item => item.watched).sort((a,b) =>
+    String(b.watchedDate || '').localeCompare(String(a.watchedDate || '')) ||
+    (b.watchedRecordedAt || 0) - (a.watchedRecordedAt || 0) || String(a.id).localeCompare(String(b.id)));
+}
+function openWatchedDate(id) {
+  const item = savedSeries.get(String(id)); if (!item?.watched) return;
+  watchedEditingId = String(id);
+  $('#watched-series').textContent = item.originalTitle || item.title || `TMDb ${id}`;
+  $('#watched-date').max = watchDateToday();
+  $('#watched-date').value = item.watchedDate || watchDateToday();
+  $('#watched-feedback').textContent = '';
+  $('#watched-dialog').showModal(); $('#watched-date').focus();
+}
+function episodeCopyTitle(number, title) { return `E${String(Number(number)).padStart(2, '0')}: ${title || ''}`; }
+function shelfActions(id, title) {
+  const actions = document.createElement('span'); actions.className = 'actions shelf-actions';
+  for (const [action, label] of [['favorite','⭐ 收藏'], ['watching','▶ 在看'], ['watched','✓ 已观看']]) {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'mini-button';
+    button.dataset.shelfId = String(id); button.dataset.shelfAction = action;
+    button.textContent = label; button.setAttribute('aria-pressed', String(!!savedSeries.get(String(id))?.[action]));
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        const enabled = !savedSeries.get(String(id))?.[action];
+        const data = await api('/api/tmdb/shelf', {id:String(id), title, action, enabled});
+        renderShelf(data.items); if (data.artwork_pending) scheduleShelfRefresh();
+        if (action === 'watched') toast(enabled ? '✓ 已记入今日观看时间线，可在卡片上修改日期' : '已取消观看标记');
+      }
+      catch (error) { toast(error.message, true); } finally { button.disabled = false; }
+    }); actions.append(button);
+  }
+  return actions;
+}
+function renderShelf(items) {
+  savedSeries = new Map(items.map(item => [String(item.id), item]));
+  const host = $('#series-shelf-list'); host.replaceChildren();
+  const timeline = shelfFilter === 'watched';
+  const visible = timeline ? watchedShelfItems(items) : items.filter(item => shelfFilter === 'all' || item[shelfFilter]);
+  host.classList.toggle('shelf-timeline', timeline);
+  $('#shelf-count').textContent = `${visible.length} / ${items.length}`;
+  $$('[data-shelf-filter]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.shelfFilter === shelfFilter)));
+  if (!visible.length) {
+    const empty = document.createElement('p'); empty.className = 'shelf-empty';
+    empty.textContent = timeline ? '还没有观看记录。查询剧集后点“已观看”，就会按完成日期出现在这里。' : items.length ? '这个分组还没有剧集，切换“全部”查看。' : '查询剧集后点“收藏”“在看”或“已观看”，留住下一次与好故事相遇的位置。'; host.append(empty);
+  }
+  const imageURL = (path, size) => /^\/[\w-]+\.(jpg|png|webp)$/.test(path || '') ? `https://image.tmdb.org/t/p/${size}${path}` : '';
+  let monthKey = null, timelineGroup = null;
+  for (const item of visible) {
+    const name = item.originalTitle || item.title || `TMDb ${item.id}`;
+    const card = document.createElement('article'); card.className = 'shelf-card'; card.dataset.seriesId = item.id;
+    const backdropURL = imageURL(item.backdropPath, 'w780');
+    if (backdropURL) {
+      const background = document.createElement('img'); background.className = 'shelf-backdrop'; background.src = backdropURL; background.alt = ''; background.loading = 'lazy'; background.setAttribute('aria-hidden','true'); background.onerror = () => background.remove(); card.append(background);
+    }
+    const poster = document.createElement('button'); poster.type = 'button'; poster.className = 'shelf-poster'; poster.setAttribute('aria-label', `查询 ${name} 的单集`);
+    const placeholder = document.createElement('span'); placeholder.className = 'shelf-poster-fallback'; placeholder.textContent = name.slice(0,1); poster.append(placeholder);
+    const posterURL = imageURL(item.posterPath, 'w185');
+    if (posterURL) { const image = document.createElement('img'); image.src = posterURL; image.alt = `${name} 封面`; image.loading = 'lazy'; image.onerror = () => image.remove(); poster.append(image); }
+    poster.onclick = () => openEpisodeDialog(item.id, name);
+    const content = document.createElement('div'); content.className = 'shelf-info';
+    const title = document.createElement('button'); title.className = 'shelf-title'; title.type = 'button'; title.textContent = name; title.title = name; title.onclick = () => openEpisodeDialog(item.id, name);
+    const translated = document.createElement('p'); translated.className = 'shelf-subtitle'; translated.textContent = item.translatedTitle && item.translatedTitle !== name ? item.translatedTitle : (item.genres || []).join(' · ');
+    const meta = document.createElement('p'); meta.className = 'shelf-meta'; meta.textContent = [item.year, item.rating > 0 ? `TMDb ${Number(item.rating).toFixed(1)}` : '', item.certification].filter(Boolean).join(' · ') || '正在补充影视信息';
+    const progress = document.createElement('p'); progress.className = 'shelf-progress'; progress.textContent = `${item.watched ? '已观看' + (item.watching ? ' · 重看中' : '') : item.watching ? '在看' : '已收藏'}${item.season !== undefined ? ` · 上次查询 S${String(item.season).padStart(2,'0')}E${String(item.episode).padStart(2,'0')}` : ' · 点封面查询单集'}`;
+    const actions = document.createElement('div'); actions.className = 'shelf-quick-actions';
+    const quick = shelfActions(item.id, name);
+    const favorite = quick.querySelector('[data-shelf-action="favorite"]'); favorite.classList.add('shelf-star'); favorite.textContent = item.favorite ? '★' : '☆'; favorite.setAttribute('aria-label', `${item.favorite ? '取消收藏' : '收藏'} ${name}`); favorite.title = favorite.getAttribute('aria-label');
+    const watching = quick.querySelector('[data-shelf-action="watching"]'); watching.textContent = item.watching ? '在看中' : '设为在看';
+    const watched = quick.querySelector('[data-shelf-action="watched"]'); watched.textContent = item.watched ? '✓ 已看' : '标记已看';
+    quick.removeChild(favorite); actions.append(quick);
+    const source = document.createElement('button'); source.type = 'button'; source.className = 'mini-button'; source.textContent = '源数据'; source.onclick = () => loadSource(item.id); actions.append(source);
+    content.append(title, translated, meta, progress);
+    if (item.watched) {
+      const date = document.createElement('button'); date.type = 'button'; date.className = 'shelf-watched-date';
+      date.textContent = `📅 ${item.watchedDate || '补充日期'} · 修改`; date.setAttribute('aria-label',`修改 ${name} 的观看日期`);
+      date.onclick = () => openWatchedDate(item.id); content.append(date);
+    }
+    content.append(actions); card.append(poster, content, favorite);
+    if (timeline) {
+      const key = /^\d{4}-\d{2}-\d{2}$/.test(item.watchedDate || '') ? item.watchedDate.slice(0,7) : 'unknown';
+      if (key !== monthKey) {
+        monthKey = key;
+        const group = document.createElement('section'); group.className = 'shelf-month';
+        const heading = document.createElement('h4'); heading.className = 'shelf-month-heading';
+        heading.textContent = key === 'unknown' ? '日期待补' : `${key.slice(0,4)} 年 ${Number(key.slice(5))} 月`;
+        timelineGroup = document.createElement('div'); timelineGroup.className = 'shelf-month-list';
+        group.append(heading, timelineGroup); host.append(group);
+      }
+      timelineGroup.append(card);
+    } else host.append(card);
+  }
+  $$('[data-shelf-id]').forEach(button => button.setAttribute('aria-pressed', String(!!savedSeries.get(button.dataset.shelfId)?.[button.dataset.shelfAction])));
+}
+function scheduleShelfRefresh() { clearTimeout(shelfRefreshTimer); shelfRefreshTimer = setTimeout(loadShelf, 1500); }
+async function loadShelf() {
+  clearTimeout(shelfRefreshTimer);
+  try { const data = await api('/api/tmdb/shelf'); renderShelf(data.items); if (data.artwork_pending) scheduleShelfRefresh(); }
+  catch (error) { $('#series-shelf-list').textContent = `收藏读取失败：${error.message}`; }
+}
 const namerQueue = new Map();
-let namerPendingItems = [];
 let namerBatchPlans = [];
 const basePath = location.pathname.startsWith('/media-tools') ? '/media-tools' : '';
 const mediaPathGroups = [
@@ -16,7 +117,7 @@ const mediaPathGroups = [
   {label:'123', root:'123'},
   {label:'百度', root:'Baidu'},
 ];
-const tvDirectories = ['01美', '01中', '01韩', '01日', '01台', '01英'];
+const tvDirectories = ['01美', '01中', '01韩', '01日', '01台', '01英', '01欧'];
 const movieDirectories = ['01国', '01外'];
 const animeDirectories = {115:['01中','01日','01美'], GuangYa:['01中','01日'], 123:['01中'], Baidu:['01中','01日']};
 
@@ -77,18 +178,28 @@ function presetMarkup() {
 $('#namer-presets').innerHTML = presetMarkup();
 
 function switchView(name) {
+  if (!Object.hasOwn(titles, name)) name = 'namer';
   $$('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.view === name));
   $$('.view').forEach(view => view.classList.toggle('active', view.id === `view-${name}`));
   $('#page-title').textContent = titles[name];
-  $('.sidebar').classList.remove('open');
+  closeMobileNav();
   location.hash = name;
   if (name === 'detective') { loadDetective(); loadAutomationStatus(); }
-  if (name === 'namer' && !namerInboxLoaded) { namerInboxLoaded = true; loadNamerInbox(); }
-  if (name === 'emby' && !embyPendingLoaded) { embyPendingLoaded = true; loadEmbyCenter(); }
 }
 
 $$('.nav-item').forEach(item => item.addEventListener('click', () => switchView(item.dataset.view)));
-$('#mobile-menu').addEventListener('click', () => $('.sidebar').classList.toggle('open'));
+function closeMobileNav() {
+  $('.sidebar').classList.remove('open');
+  $('#nav-scrim').hidden = true;
+  $('#mobile-menu').setAttribute('aria-expanded', 'false');
+}
+$('#mobile-menu').addEventListener('click', () => {
+  const open = $('#mobile-menu').getAttribute('aria-expanded') !== 'true';
+  $('.sidebar').classList.toggle('open', open);
+  $('#nav-scrim').hidden = !open;
+  $('#mobile-menu').setAttribute('aria-expanded', String(open));
+});
+$('#nav-scrim').addEventListener('click', closeMobileNav);
 $$('.segmented button').forEach(button => button.addEventListener('click', () => {
   $$('.segmented button').forEach(item => item.classList.remove('active'));
   button.classList.add('active');
@@ -101,6 +212,7 @@ $('#tmdb-form').addEventListener('submit', async event => {
   const query = $('#tmdb-query').value.trim();
   const year = $('#tmdb-year').value.trim();
   if (!query) return;
+  hideArtwork();
   checkLibrary(query);
   if (mediaKind === 'tv' && /^\d+$/.test(query)) return loadSource(query);
   const target = $('#tmdb-result');
@@ -138,14 +250,17 @@ async function checkLibrary(query) {
 }
 
 function renderSearch(results, kind) {
+  hideArtwork();
   const target = $('#tmdb-result');
   if (!results.length) return fail(target, new Error('没有找到匹配结果'));
   target.className = 'result-space search-list';
   target.innerHTML = results.map(item => `<article class="search-item">
-    <div><h3>${escapeHtml(item.title || item.original_title || '未命名')}</h3><p>${item.kind === 'movie' ? '电影' : '剧集'} · ${escapeHtml(item.original_title || '')}${item.year ? ` · ${item.year}` : ''} · ${escapeHtml(item.language || '未知语言')} · <span class="id-tag">TMDb ${item.id}</span></p>${item.recommended_name ? `<div class="copy-name"><code>${escapeHtml(item.recommended_name)}</code></div>` : ''}</div>
-    <div class="actions"><button class="mini-button copy-title-button" data-title="${escapeHtml(item.title || item.original_title || '')}">仅复制剧名</button><button class="mini-button copy-folder-button" data-name="${escapeHtml(item.recommended_name || '')}">复制文件夹名</button><button class="mini-button copy-id-button" data-id="${item.id}">复制 TMDb 号</button>${kind === 'tv' ? `<button class="mini-button source-button" data-id="${item.id}">源语言单集</button>` : ''}</div>
+    <div><h3>${escapeHtml(item.original_title || item.title || '未命名')}</h3><p>${item.kind === 'movie' ? '电影' : '剧集'} · 源片名${item.title && item.title !== item.original_title ? ` · 译名：${escapeHtml(item.title)}` : ''}${item.year ? ` · ${item.year}` : ''} · ${escapeHtml(item.language || '未知语言')} · <span class="id-tag">TMDb ${item.id}</span></p>${item.recommended_name ? `<div class="copy-name"><code>${escapeHtml(item.recommended_name)}</code></div>` : ''}</div>
+    <div class="actions"><button class="mini-button copy-title-button" data-title="${escapeHtml(item.original_title || item.title || '')}">复制源片名</button><button class="mini-button copy-folder-button" data-name="${escapeHtml(item.recommended_name || '')}">复制源语言目录名</button><button class="mini-button copy-id-button" data-id="${item.id}">复制 TMDb 号</button>${(item.kind || kind) === 'tv' ? `<button class="mini-button episode-button" data-id="${item.id}" data-title="${escapeHtml(item.title || item.original_title || '')}">🎬 查询单集</button><button class="mini-button source-button" data-id="${item.id}">🖼 源数据与图片</button>` : ''}</div>
   </article>`).join('');
   $$('.source-button').forEach(button => button.addEventListener('click', () => loadSource(button.dataset.id)));
+  target.querySelectorAll('.search-item').forEach((card, index) => { const item = results[index]; if ((item.kind || kind) === 'tv') card.querySelector('.actions').append(shelfActions(item.id, item.original_title || item.title)); });
+  $$('.episode-button').forEach(button => button.addEventListener('click', () => openEpisodeDialog(button.dataset.id, button.dataset.title)));
   $$('.copy-id-button').forEach(button => button.addEventListener('click', async () => {
     await navigator.clipboard.writeText(button.dataset.id);
     toast('TMDb ID 已复制');
@@ -160,11 +275,149 @@ function renderSearch(results, kind) {
   }));
 }
 
-async function loadSource(id) {
+let episodeRequest = 0;
+function openEpisodeDialog(id, title) {
+  episodeRequest++;
+  const dialog = $('#episode-dialog');
+  dialog.dataset.seriesId = id;
+  $('#episode-series').textContent = title ? `${title} · TMDb ${id}` : `TMDb ${id}`;
+  const saved = savedSeries.get(String(id));
+  $('#episode-season').value = saved?.season ?? '';
+  $('#episode-number').value = saved?.episode ?? '';
+  $('#episode-result').replaceChildren();
+  $('#episode-submit').disabled = false;
+  $('#episode-submit').textContent = '读取单集';
+  dialog.showModal();
+  $('#episode-season').focus();
+}
+$('#episode-close').addEventListener('click', () => $('#episode-dialog').close());
+$('#episode-dialog').addEventListener('close', () => { episodeRequest++; });
+$('#episode-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const seasonInput = $('#episode-season');
+  const episodeInput = $('#episode-number');
+  const season = seasonInput.value.trim();
+  const episode = episodeInput.value.trim();
+  const target = $('#episode-result');
+  if (!/^\d{1,3}$/.test(season) || !/^\d{1,4}$/.test(episode) || Number(episode) < 1) {
+    fail(target, new Error('季号和集号只填数字；集号从 1 开始，特别篇季号填 0'));
+    (!/^\d{1,3}$/.test(season) ? seasonInput : episodeInput).focus();
+    return;
+  }
+  const seasonNumber = String(Number(season)).padStart(2, '0');
+  const episodeNumber = String(Number(episode)).padStart(2, '0');
+  const code = `S${seasonNumber}E${episodeNumber}`;
+  seasonInput.value = seasonNumber;
+  episodeInput.value = episodeNumber;
+  const request = ++episodeRequest;
+  const button = $('#episode-submit');
+  button.disabled = true;
+  button.textContent = '读取中…';
+  loading(target, `正在读取 ${code}`);
+  try {
+    const data = await api('/api/tmdb/episode', {tmdb_id: $('#episode-dialog').dataset.seriesId, code});
+    if (request !== episodeRequest) return;
+    target.className = 'episode-detail';
+    target.innerHTML = `<h3>${escapeHtml(data.code)} · ${escapeHtml(data.name || data.translated_name || '暂无标题')}</h3>${data.translated_name && data.translated_name !== data.name ? `<p class="meta">译名：${escapeHtml(data.translated_name)}</p>` : ''}<p class="meta">首播 ${escapeHtml(data.air_date || '未知')}${data.runtime ? ` · ${Number(data.runtime)} 分钟` : ''} · ${data.vote_count ? `TMDb ${Number(data.rating).toFixed(1)}（${Number(data.vote_count)} 人评分）` : '暂无评分'} · 源语言 ${escapeHtml(data.original_language)}</p><p class="episode-overview">${escapeHtml(data.overview || 'TMDb 暂无该集简介')}</p>${data.original_overview && data.original_overview !== data.overview ? `<details><summary>源语言简介</summary><p class="episode-overview">${escapeHtml(data.original_overview)}</p></details>` : ''}<div class="actions"><button class="mini-button" id="episode-copy-title" type="button">复制源单集名</button><button class="mini-button" id="episode-copy-overview" type="button">复制简介</button><a class="mini-button" href="${escapeHtml(data.detail_url)}" target="_blank" rel="noopener noreferrer">TMDb 单集详情 ↗</a></div>`;
+    const copyName = episodeCopyTitle(episodeNumber, data.name || data.translated_name);
+    $('#episode-copy-title').textContent = `复制 ${copyName}`;
+    $('#episode-copy-title').addEventListener('click', async () => { await navigator.clipboard.writeText(copyName); toast('集号与源单集名已复制'); });
+    if (savedSeries.has($('#episode-dialog').dataset.seriesId)) {
+      api('/api/tmdb/shelf', {id:$('#episode-dialog').dataset.seriesId, action:'progress', season:Number(season), episode:Number(episode)}).then(data => renderShelf(data.items)).catch(() => toast('单集已读取，但上次查询位置保存失败', true));
+    }
+    $('#episode-copy-overview').addEventListener('click', async () => { await navigator.clipboard.writeText(data.overview || ''); toast('简介已复制'); });
+  } catch (error) {
+    if (request === episodeRequest) fail(target, error);
+  } finally {
+    if (request === episodeRequest) { button.disabled = false; button.textContent = '读取单集'; }
+  }
+});
+
+let artworkRequest = 0;
+function hideArtwork() {
+  artworkRequest++;
+  $('#tmdb-artwork').hidden = true;
+  $('#tmdb-workspace').classList.remove('has-artwork');
+}
+
+async function loadSource(id, season = null) {
+  const request = ++artworkRequest;
+  const target = $('#tmdb-result');
+  const side = $('#tmdb-artwork');
+  side.hidden = false;
+  $('#tmdb-workspace').classList.add('has-artwork');
+  loading(target, season === null ? '正在读取剧集源数据' : `正在读取 Season ${String(season).padStart(2,'0')} 的源数据与图片`);
+  side.innerHTML = '<h3>🖼 封面与剧照</h3><p class="meta">按需读取当前季，不遍历全剧</p><p id="artwork-progress" role="status">正在读取…</p>';
+  try {
+    const response = await api('/api/tmdb/artwork', {tmdb_id:id, season});
+    let data = response.data;
+    while (!data) {
+      if (request !== artworkRequest) return;
+      const job = await api(`/api/jobs/${response.job_id}`);
+      if (request !== artworkRequest) return;
+      if (job.status === 'failed') throw new Error(job.output || '图片读取失败');
+      if (job.status === 'completed') { data = job.data; break; }
+      $('#artwork-progress').textContent = job.current || '正在读取…';
+      await new Promise(resolve => setTimeout(resolve, 800));
+    }
+    if (request !== artworkRequest) return;
+    lastSourceData = data;
+    renderSourceWorkspace(data);
+    renderArtwork(data);
+  } catch (error) {
+    if (request !== artworkRequest) return;
+    fail(target, error);
+    side.innerHTML = '<h3>🖼 读取失败</h3><p>请重试；暂时的网络错误不代表没有图片。</p><button class="secondary" id="artwork-retry">↻ 重新读取</button>';
+    $('#artwork-retry').addEventListener('click', () => loadSource(id, season));
+  }
+}
+
+function renderSourceWorkspace(data) {
+  const target = $('#tmdb-result');
+  target.className = 'result-space result-card';
+  const scope = data.season === null ? '全剧概览' : `Season ${String(data.season).padStart(2,'0')} · ${data.episodes.length} 集`;
+  target.innerHTML = `<div class="result-toolbar"><div><strong>${escapeHtml(data.original_name)}</strong><div class="meta">${escapeHtml(data.title)} · ${escapeHtml(data.year)} · ${escapeHtml(data.original_language)} · TMDb ${data.tmdb_id}</div></div></div><div class="source-name-bar"><code>${escapeHtml(data.recommended_name)}</code></div><div class="actions source-workspace-actions"><button class="mini-button" data-source-copy="title">复制源剧名</button><button class="mini-button" data-source-copy="folder">复制目录名</button><button class="mini-button" id="workspace-episode">🎬 查询单集</button><button class="mini-button" id="copy-json">复制当前源数据</button><button class="mini-button" id="download-json">下载源数据</button><button class="mini-button" id="source-all">读取全剧源数据</button></div><h3>${escapeHtml(scope)}</h3>${data.season === null ? `<p class="episode-overview">${escapeHtml(data.overview || '暂无简介')}</p><p class="meta">共有 ${data.seasons.length} 季（含特别篇）。在图片栏选择一季，源数据与图片一起切换。</p>` : `<h4>${escapeHtml(data.season_name || '')}</h4><div class="source-episode-list">${data.episodes.map(ep => `<details class="source-episode"><summary><b>E${String(ep.episode).padStart(2,'0')}</b> ${escapeHtml(ep.name || '暂无标题')}</summary><p class="episode-overview">${escapeHtml(ep.overview || '暂无源语言简介')}</p><div class="actions"><button class="mini-button workspace-copy" data-copy="${escapeHtml(ep.name)}">复制单集名</button><button class="mini-button workspace-copy" data-copy="${escapeHtml(ep.overview)}">复制源简介</button><button class="mini-button workspace-episode" data-episode="${ep.episode}">查看中文详情</button></div></details>`).join('') || '<p class="meta">该季暂无单集数据。</p>'}</div>`}`;
+  $('[data-source-copy="title"]').addEventListener('click', async () => { await navigator.clipboard.writeText(data.original_name); toast('源剧名已复制'); });
+  target.querySelector('.source-workspace-actions').append(shelfActions(data.tmdb_id, data.original_name || data.title));
+  target.querySelectorAll('.source-episode').forEach((row, index) => { const button = row.querySelector('.workspace-copy'); button.dataset.copy = episodeCopyTitle(data.episodes[index].episode, data.episodes[index].name); });
+  $('[data-source-copy="folder"]').addEventListener('click', async () => { await navigator.clipboard.writeText(data.recommended_name); toast('目录名已复制'); });
+  $('#workspace-episode').addEventListener('click', () => { openEpisodeDialog(String(data.tmdb_id), data.title); if (data.season !== null) $('#episode-season').value = String(data.season); });
+  $('#copy-json').addEventListener('click', async () => { await navigator.clipboard.writeText(JSON.stringify(data, null, 2)); toast('当前源数据已复制'); });
+  $('#download-json').addEventListener('click', downloadSource);
+  $('#source-all').addEventListener('click', () => loadAllSource(String(data.tmdb_id)));
+  $$('.workspace-copy').forEach(button => button.addEventListener('click', async () => { await navigator.clipboard.writeText(button.dataset.copy); toast('已复制'); }));
+  $$('.workspace-episode').forEach(button => button.addEventListener('click', () => {
+    openEpisodeDialog(String(data.tmdb_id), data.title);
+    $('#episode-season').value = String(data.season); $('#episode-number').value = button.dataset.episode;
+    $('#episode-form').requestSubmit();
+  }));
+}
+
+function artworkGroup(data, key, title) {
+  const images = data[key] || [];
+  const scope = data.season === null ? 'series' : `S${String(data.season).padStart(2,'0')}`;
+  return `<section class="artwork-group"><h4>${title}<small>${images.length} / 最多 5 张</small></h4>${images.length ? `<div class="artwork-grid ${key === 'posters' ? 'artwork-posters' : ''}">${images.map((image, index) => {
+    const filename = `tmdb-${data.tmdb_id}-${scope}-${key}-${index + 1}`;
+    const download = `${basePath}/api/tmdb/image?path=${encodeURIComponent(image.file_path)}&name=${encodeURIComponent(filename)}`;
+    return `<figure class="artwork-card"><a href="${escapeHtml(image.original_url)}" target="_blank" rel="noopener noreferrer"><img src="${escapeHtml(image.preview_url)}" alt="${escapeHtml(data.original_name)} ${escapeHtml(title)} ${index + 1}" loading="lazy" referrerpolicy="no-referrer"></a><figcaption><strong>${image.vote_count ? `★ ${Number(image.vote_average).toFixed(2)}` : '暂无图片评分'}</strong><small>${image.vote_count ? `${Number(image.vote_count)} 票 · ` : ''}${Number(image.width) || '?'} × ${Number(image.height) || '?'}${image.episode ? ` · E${String(image.episode).padStart(2,'0')}` : ''}${image.iso_639_1 ? ` · ${escapeHtml(image.iso_639_1)}` : ' · 无语言'}</small><div class="actions"><a class="mini-button" href="${escapeHtml(download)}">下载原图</a><button class="mini-button artwork-copy" data-url="${escapeHtml(image.original_url)}">复制链接</button></div></figcaption></figure>`;
+  }).join('')}</div>` : '<p class="meta artwork-empty">TMDb 暂无此类图片；不会拿其他季或全剧图片冒充。</p>'}</section>`;
+}
+
+function renderArtwork(data) {
+  const side = $('#tmdb-artwork');
+  side.innerHTML = `<div class="result-toolbar"><h3>🖼 封面与剧照</h3><a class="mini-button" href="${escapeHtml(data.detail_url)}" target="_blank" rel="noopener noreferrer">TMDb ↗</a></div><label class="artwork-season-label">源数据与图片 · 季选择<select id="artwork-season"><option value="">全剧概览</option>${data.seasons.map(item => `<option value="${item.number}"${item.number === data.season ? ' selected' : ''}>${item.number === 0 ? '特别篇 S00' : `Season ${String(item.number).padStart(2,'0')}`} · ${item.episode_count} 集</option>`).join('')}</select></label><p class="meta artwork-ranking">每类按图片评分降序取前 5，评分相同优先票数；无投票项排后，再按清晰度排序。这里不是剧集评分。</p>${data.warnings.length ? `<p class="artwork-warning">${escapeHtml(data.warnings.join('；'))}</p><button class="mini-button" id="artwork-retry">↻ 重试本季</button>` : ''}${artworkGroup(data, 'posters', data.season === null ? '剧集封面' : '本季封面')}${artworkGroup(data, data.season === null ? 'backdrops' : 'stills', data.season === null ? '全剧背景图' : '本季剧照')}<p class="meta artwork-credit">图片与数据来源 TMDb。This product uses the TMDB API but is not endorsed or certified by TMDB.</p>`;
+  $('#artwork-season').addEventListener('change', event => loadSource(String(data.tmdb_id), event.target.value === '' ? null : Number(event.target.value)));
+  $$('.artwork-copy').forEach(button => button.addEventListener('click', async () => { await navigator.clipboard.writeText(button.dataset.url); toast('原图链接已复制'); }));
+  if (data.warnings.length) $('#artwork-retry').addEventListener('click', () => loadSource(String(data.tmdb_id), data.season));
+}
+
+async function loadAllSource(id) {
+  const request = ++artworkRequest;
   const target = $('#tmdb-result');
   loading(target, '正在读取全部季与单集');
   try {
     const data = await api('/api/tmdb/source', {tmdb_id: id});
+    if (request !== artworkRequest) return;
     lastSourceData = data;
     const seasons = data.episodes.reduce((groups, episode) => {
       (groups[episode.season] ||= []).push(episode);
@@ -174,21 +427,26 @@ async function loadSource(id) {
     target.innerHTML = `<div class="result-toolbar"><div><strong>${escapeHtml(data.title || data.original_name)}</strong><div class="meta">${data.year || '年份未知'} · TMDb ${data.tmdb_id} · ${escapeHtml(data.original_language)} · ${data.episodes.length} 集</div></div><div class="actions"><button class="mini-button" id="copy-source-title">仅复制剧名</button><button class="mini-button" id="copy-source-folder">复制文件夹名</button><button class="mini-button" id="copy-tmdb-id">复制 TMDb 号</button><button class="mini-button" id="copy-json">复制源数据</button><button class="mini-button" id="download-json">下载</button></div></div>
       <div class="source-name-bar"><code>${escapeHtml(data.recommended_name || '')}</code></div>
       <div class="season-groups">${Object.entries(seasons).sort((a,b) => Number(a[0]) - Number(b[0])).map(([season, episodes], index) => `<details class="season-group" ${index === 0 ? 'open' : ''}><summary><span>Season ${String(season).padStart(2,'0')}</span><small>${episodes.length} 集</small></summary><div class="table-wrap"><table><thead><tr><th>集</th><th>源语言标题</th><th>源语言简介</th></tr></thead><tbody>${episodes.map(ep => `<tr><td class="num">E${String(ep.episode).padStart(2,'0')}</td><td><div class="episode-copy"><span>${escapeHtml(ep.name) || '—'}</span><button class="mini-button copy-episode-name" data-copy="${escapeHtml(ep.name)}">复制单集名</button></div></td><td class="overview"><div class="episode-copy"><span>${escapeHtml(ep.overview) || '—'}</span><button class="mini-button copy-episode-overview" data-copy="${escapeHtml(ep.overview)}">复制简介</button></div></td></tr>`).join('')}</tbody></table></div></details>`).join('')}</div>`;
+    const episodeButton = document.createElement('button');
+    episodeButton.type = 'button'; episodeButton.className = 'mini-button'; episodeButton.textContent = '🎬 查询单集';
+    episodeButton.addEventListener('click', () => openEpisodeDialog(String(data.tmdb_id), data.title || data.original_name));
+    target.querySelector('.actions').prepend(episodeButton);
     $('#copy-tmdb-id').addEventListener('click', async () => { await navigator.clipboard.writeText(String(data.tmdb_id)); toast('TMDb ID 已复制'); });
     $('#copy-source-title').addEventListener('click', async () => { await navigator.clipboard.writeText(data.title || data.original_name); toast('剧名已复制'); });
     $('#copy-source-folder').addEventListener('click', async () => { await navigator.clipboard.writeText(data.recommended_name || data.original_name); toast('文件夹名已复制'); });
     $('#copy-json').addEventListener('click', async () => { await navigator.clipboard.writeText(JSON.stringify(lastSourceData, null, 2)); toast('JSON 已复制'); });
     $('#download-json').addEventListener('click', downloadSource);
-    $$('.copy-episode-name').forEach(button => button.addEventListener('click', async () => { await navigator.clipboard.writeText(button.dataset.copy); toast('单集名已复制'); }));
+    $$('.copy-episode-name').forEach(button => button.addEventListener('click', async () => { await navigator.clipboard.writeText(`${button.closest('tr').querySelector('.num').textContent}: ${button.dataset.copy}`); toast('集号与源单集名已复制'); }));
     $$('.copy-episode-overview').forEach(button => button.addEventListener('click', async () => { await navigator.clipboard.writeText(button.dataset.copy); toast('单集简介已复制'); }));
-  } catch (error) { fail(target, error); }
+  } catch (error) { if (request === artworkRequest) fail(target, error); }
 }
 
 function downloadSource() {
   const blob = new Blob([JSON.stringify(lastSourceData, null, 2)], {type:'application/json'});
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = `tmdb-${lastSourceData.tmdb_id}-${lastSourceData.original_language}.json`;
+  const season = lastSourceData.season == null ? '' : `-S${String(lastSourceData.season).padStart(2,'0')}`;
+  link.download = `tmdb-${lastSourceData.tmdb_id}${season}-${lastSourceData.original_language}.json`;
   link.click();
   URL.revokeObjectURL(link.href);
 }
@@ -203,16 +461,127 @@ $('#namer-form').addEventListener('submit', async event => {
   } catch (error) { fail(target, error); }
 });
 
-$$('.namer-presets button').forEach(button => button.addEventListener('click', () => {
+$('#namer-presets').addEventListener('click', event => {
+  const button = event.target.closest('button[data-path]');
+  if (!button) return;
   const input = $('#namer-path');
   input.value = button.dataset.path;
   $('#namer-kind').value = button.dataset.kind || 'tv';
   input.focus();
   input.setSelectionRange(input.value.length, input.value.length);
-}));
+});
+
+const directoryNameOrder = new Intl.Collator('zh-CN', {numeric:true, sensitivity:'base'});
+function sortDirectories(items) {
+  return [...items].sort((a, b) => directoryNameOrder.compare(a.name || '', b.name || '') || String(a.path || '').localeCompare(String(b.path || '')));
+}
+let directoriesLoading = false;
+async function loadActualPresets() {
+  if (directoriesLoading) return;
+  directoriesLoading = true;
+  const reload = $('#namer-directory-reload');
+  reload.disabled = true; reload.textContent = '正在读取…';
+  const host = $('#namer-presets');
+  try {
+  for (const provider of mediaPathGroups) {
+    const section = [...host.querySelectorAll('.preset-provider')].find(node => node.querySelector('strong')?.textContent === provider.label);
+    if (!section) continue;
+    const list = section.querySelector('.preset-directory-list');
+    list.innerHTML = '';
+    for (const [directory, label, kind] of [['00剧','剧集','tv'],['00影','电影','movie'],['00漫','动漫','tv']]) {
+      try {
+        const data = await api('/api/library/directories?path=' + encodeURIComponent(`/${provider.root}/${directory}`));
+        if (!data.directories.length) continue;
+        const group = document.createElement('details'); group.open = true;
+        const summary = document.createElement('summary'); summary.textContent = `${label} · ${data.directories.length}`;
+        group.append(summary);
+        const content = document.createElement('div'); content.className = 'preset-category-items'; group.append(content);
+        for (const item of sortDirectories(data.directories)) {
+          const entry = document.createElement('div'); entry.className = 'preset-directory-entry';
+          const button = document.createElement('button'); button.type = 'button'; button.className = 'preset-directory-name'; button.dataset.path = item.path + '/'; button.dataset.kind = kind; button.textContent = item.name;
+          const expand = document.createElement('button'); expand.type = 'button'; expand.className = 'preset-expand'; expand.textContent = '展开 ▾'; expand.setAttribute('aria-expanded', 'false'); expand.setAttribute('aria-label', `展开 ${item.name} 的子目录`);
+          entry.append(button, expand); content.append(entry);
+          const children = document.createElement('div'); children.className = 'preset-children'; children.hidden = true;
+          let loaded = false;
+          expand.addEventListener('click', async () => {
+            const opening = children.hidden;
+            content.querySelectorAll('.preset-children').forEach(node => { node.hidden = true; });
+            content.querySelectorAll('.preset-expand').forEach(node => { node.textContent = '展开 ▾'; node.setAttribute('aria-expanded','false'); });
+            if (!opening) return;
+            if (loaded) { children.hidden = false; expand.textContent = '收起 ▴'; expand.setAttribute('aria-expanded','true'); return; }
+            expand.disabled = true;
+            expand.textContent = '读取…';
+            try {
+              const nested = await api('/api/library/directories?path=' + encodeURIComponent(item.path));
+              const heading = document.createElement('small'); heading.className = 'preset-children-label'; heading.textContent = `${item.name} · ${nested.directories.length} 个子目录`; children.append(heading);
+              const directoryItems = sortDirectories(nested.directories).map(child => ({...child, kind, provider:provider.root, category:item.name}));
+              if (directoryItems.length) {
+                const all = document.createElement('button'); all.type = 'button'; all.className = 'preset-select-all'; all.textContent = '本目录全选 / 取消';
+                all.addEventListener('click', () => {
+                  if (directoryItems.every(child => namerQueue.has(child.path))) {
+                    directoryItems.forEach(child => namerQueue.delete(child.path)); updateNamerQueue();
+                  } else addNamerItems(directoryItems);
+                });
+                children.append(all);
+              }
+              for (const child of directoryItems) {
+                const row = document.createElement('div'); row.className = 'preset-work';
+                const check = document.createElement('input'); check.type = 'checkbox'; check.className = 'preset-work-check'; check.dataset.path = child.path; check.checked = namerQueue.has(child.path); check.setAttribute('aria-label', `选择 ${child.name}`);
+                check.addEventListener('change', () => {
+                  if (check.checked) addNamerItems([child]);
+                  else { namerQueue.delete(child.path); updateNamerQueue(); }
+                });
+                const pick = document.createElement('button'); pick.type = 'button'; pick.dataset.path = child.path; pick.dataset.kind = kind; pick.textContent = child.name; pick.title = child.name;
+                row.classList.toggle('selected', check.checked); row.append(check, pick); children.append(row);
+              }
+              if (!nested.directories.length) heading.textContent = `${item.name} · 没有子目录`;
+              loaded = true; children.hidden = false; expand.textContent = '收起 ▴'; expand.setAttribute('aria-expanded','true');
+            } catch (error) { toast(error.message, true); expand.textContent = '重试 ▾'; }
+            expand.disabled = false;
+          });
+          content.append(children);
+        }
+        list.append(group);
+      } catch (error) {
+        // Unavailable paths are not proof of deletion. Keep a retry control.
+        const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = `${label} · 重试读取`;
+        retry.addEventListener('click', loadActualPresets); list.append(retry);
+      }
+    }
+  }
+  } finally {
+    directoriesLoading = false;
+    reload.disabled = false; reload.textContent = '↻ 重新扫描目录';
+  }
+}
+
+$('#namer-directory-reload').addEventListener('click', async () => {
+  await loadActualPresets();
+  toast('目录列表已重新读取，已勾选项目保留；展开可读取最新子目录');
+});
+loadActualPresets();
 
 function renderIdentification(data) {
   const target = $('#namer-result');
+  if (data.kind === 'collection') {
+    $('#namer-kind').value = 'collection';
+    const identified = data.members.filter(item => item.status === 'identified');
+    target.className = 'result-space result-card';
+    target.innerHTML = `<div class="result-toolbar"><div><strong>${escapeHtml(data.resolved.title)}</strong><p>${identified.length} 部已识别 · ${data.members.length - identified.length} 部需核验 · ${data.missing.length} 部待入库</p></div><button class="primary" id="confirm-collection">生成合集整理预览</button></div><p>${escapeHtml(data.reason)}</p><details><summary>查看合集成员</summary>${data.members.map(item => `<p>${escapeHtml(item.title || item.path)} ${item.year || ''} · ${item.status === 'identified' ? `TMDb ${item.tmdb_id}` : escapeHtml(item.reason)}</p>`).join('')}</details>${data.missing.length ? `<details><summary>查看待入库目录 (${data.missing.length})</summary>${data.missing.map(item => `<p>${escapeHtml(item.path.split('/').pop())}</p>`).join('')}</details>` : ''}`;
+    $('#confirm-collection').addEventListener('click', () => createNamerPlan(data.collection_id));
+    const memberRows = target.querySelector('details')?.querySelectorAll('p') || [];
+    data.members.forEach((item, index) => {
+      if (item.status === 'identified' || !memberRows[index]) return;
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'mini-button'; button.textContent = '修正这部电影';
+      button.addEventListener('click', () => {
+        $('#namer-path').value = item.path; $('#namer-kind').value = 'movie'; $('#namer-id').value = '';
+        const advanced = $('#namer-id').closest('details'); if (advanced) advanced.open = true;
+        $('#namer-id').focus(); toast('填入这部电影的 TMDb 编号后识别；未识别项默认保留，不会误改');
+      });
+      memberRows[index].append(button);
+    });
+    return;
+  }
   const confidence = Math.round((data.score || 0) * 100);
   target.className = 'result-space match-card';
   target.innerHTML = `<div class="match-mark">✓</div><div class="match-copy"><span class="eyebrow">TMDb MATCH</span><h3>${escapeHtml(data.resolved.title)}</h3><p>${data.resolved.year || '年份未知'} · TMDb ${data.tmdb_id} · 源语言 ${escapeHtml(data.resolved.original_language || '未知')}</p><div class="copy-name"><code>${escapeHtml(data.recommended_name)}</code><button class="mini-button" id="copy-match-name">复制名称</button></div>${data.warning ? `<p class="namer-warning">${escapeHtml(data.warning)}</p>` : ''}<small>${data.source_parent ? `父目录：${escapeHtml(data.parent_title)} · 子文件：${escapeHtml(data.child_title)} · ` : ''}${escapeHtml(data.reason)}${confidence ? ` · 置信度 ${confidence}%` : ''}</small></div><div class="match-actions"><button class="secondary" id="retry-identify">重新识别</button><button class="primary" id="confirm-match">信息正确，生成预览</button></div>`;
@@ -225,7 +594,7 @@ async function createNamerPlan(tmdbId) {
   const target = $('#namer-result');
   loading(target, '正在生成只读改名预览');
   try {
-    const data = await api('/api/namer/plan', {path:$('#namer-path').value, tmdb_id:tmdbId, kind:$('#namer-kind').value, title_style:$('#namer-style').value, source_parent:$('#namer-source-parent').checked});
+    const data = await api('/api/namer/plan', {path:$('#namer-path').value, tmdb_id:tmdbId, kind:$('#namer-kind').value, title_style:$('#namer-style').value, source_parent:$('#namer-source-parent').checked, fill_missing:$('#namer-fill-missing').checked});
     renderPlan(data);
   } catch (error) { fail(target, error); }
 }
@@ -235,13 +604,37 @@ function renderPlan(plan) {
   const blocked = plan.conflicts.length > 0;
   target.className = 'result-space result-card';
   target.innerHTML = `<div class="result-toolbar"><div><strong>${escapeHtml(plan.resolved.title)}</strong><div class="meta">${escapeHtml(plan.root)} · ${plan.operations.length} 项修改 · ${plan.skipped.length} 项跳过</div></div><span class="status ${blocked ? 'failed' : (plan.operations.length ? 'planned' : 'compliant')}">${blocked ? '有冲突' : (plan.operations.length ? '等待确认' : '已规范')}</span></div>
-    ${blocked ? `<div class="conflict-box">${plan.conflicts.map(escapeHtml).join('<br>')}</div>` : ''}
+    ${blocked ? `<div class="conflict-box">${plan.conflicts.map(escapeHtml).join('<br>')}<p>不会覆盖或删除现有文件。可跳过冲突，只执行安全项。</p><button class="secondary" id="skip-plan-conflicts" type="button">跳过冲突，保留其余</button></div>` : ''}
+    <div class="actions"><button class="mini-button" id="edit-plan-id" type="button">重新指定 TMDb</button><button class="mini-button" id="retain-plan-items" type="button">保留勾选项的原名称</button><button class="mini-button" id="cancel-namer-plan" type="button">暂不执行</button></div>
     <div class="table-wrap"><table><thead><tr><th>类型</th><th>改名前 → 改名后</th></tr></thead><tbody>${plan.operations.map(op => `<tr><td>${escapeHtml(op.kind)}</td><td><div class="operation"><span class="from">${escapeHtml(op.source)}</span><span class="arrow">↓</span><span class="to">${escapeHtml(op.target)}</span></div></td></tr>`).join('') || '<tr><td colspan="2">无需修改</td></tr>'}</tbody></table></div>
     ${!blocked && plan.operations.length ? `<div class="apply-panel"><label><span>执行确认</span><div class="confirm-row"><input id="apply-confirm" autocomplete="off" placeholder="执行 ${plan.operations.length} 项"><button class="secondary" type="button" id="fill-confirm">一键填入</button></div></label><button class="primary danger" id="apply-plan">确认执行</button></div>` : ''}`;
   const button = $('#apply-plan');
   if (button) button.addEventListener('click', () => applyPlan(plan.plan_id, plan.operations.length));
   const fillButton = $('#fill-confirm');
   if (fillButton) fillButton.addEventListener('click', () => { $('#apply-confirm').value = `执行 ${plan.operations.length} 项`; toast('确认文字已填入'); });
+  target.querySelectorAll('tbody tr').forEach((row, index) => {
+    if (!plan.operations[index]) return;
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox'; checkbox.className = 'retain-operation'; checkbox.dataset.index = index;
+    checkbox.setAttribute('aria-label', '保留该项原名称'); row.cells[0].prepend(checkbox);
+  });
+  async function revise(skipConflicts) {
+    const excluded = [...target.querySelectorAll('.retain-operation:checked')].map(node => Number(node.dataset.index));
+    if (!skipConflicts && !excluded.length) return toast('请勾选要保留原名称的操作');
+    try {
+      const revised = await api('/api/namer/plan/review', {plan_id:plan.plan_id, exclude_indices:excluded, skip_conflicts:skipConflicts});
+      renderPlan({...revised, resolved:plan.resolved});
+      toast('已更新预览，尚未执行改名');
+    } catch (error) { toast(error.message, true); }
+  }
+  $('#skip-plan-conflicts')?.addEventListener('click', () => revise(true));
+  $('#retain-plan-items').addEventListener('click', () => revise(false));
+  $('#edit-plan-id').addEventListener('click', () => {
+    $('#namer-path').value = plan.root;
+    const advanced = $('#namer-id').closest('details'); if (advanced) advanced.open = true;
+    $('#namer-id').focus(); $('#namer-id').select(); toast('填入正确 TMDb 编号，再点击自动识别');
+  });
+  $('#cancel-namer-plan').addEventListener('click', () => { target.innerHTML = '<div class="history-empty">已暂缓，本次没有执行任何改名。</div>'; });
 }
 
 async function applyPlan(planId, count) {
@@ -261,11 +654,10 @@ async function pollNamerJob(jobId) {
     const job = await api(`/api/jobs/${jobId}`);
     const progress = namerProgress(job);
     target.className = 'result-space job-card';
-    target.innerHTML = `<span class="status ${escapeHtml(job.status)}">${job.status === 'running' ? '执行中' : (job.status === 'completed' ? '已完成' : '失败')}</span><h3>${job.status === 'running' ? '正在执行改名' : (job.status === 'completed' ? '改名已完成' : '改名任务失败')}</h3><p>${escapeHtml(job.path)}</p>${progress}${job.output ? `<pre>${escapeHtml(job.output)}</pre>` : '<p>操作正在服务器后台安全执行，并逐项写入回滚记录。</p>'}${job.status === 'completed' ? '<button class="secondary" id="view-refresh-job">查看 Emby 刷新进度</button>' : ''}`;
+    target.innerHTML = `<span class="status ${escapeHtml(job.status)}">${job.status === 'running' ? '执行中' : (job.status === 'completed' ? '已完成' : '失败')}</span><h3>${job.status === 'running' ? '正在执行改名' : (job.status === 'completed' ? '改名已完成' : '改名任务失败')}</h3><p>${escapeHtml(job.path)}</p>${progress}${job.output ? `<pre>${escapeHtml(job.output)}</pre>` : '<p>操作正在服务器后台安全执行，并逐项写入回滚记录。</p>'}`;
     if (job.status === 'running') setTimeout(() => pollNamerJob(jobId), 2500);
     else if (job.status === 'completed') {
-      toast('改名完成，Emby 刷新已开始');
-      $('#view-refresh-job').addEventListener('click', () => { switchView('emby'); pollJob(job.refresh_job); });
+      toast('改名已完成');
     } else toast('改名任务失败，请查看错误信息', true);
   } catch (error) { fail(target, error); }
 }
@@ -346,14 +738,6 @@ function groupByProvider(items) {
   }, {});
 }
 
-async function fetchNamerPending() {
-  return api('/api/namer/pending');
-}
-
-async function fetchEmbyPending() {
-  return api('/api/emby/pending');
-}
-
 function beginNamerForPath(path, kind) {
   $('#namer-path').value = path;
   $('#namer-kind').value = kind === 'movie' ? 'movie' : 'tv';
@@ -363,60 +747,38 @@ function beginNamerForPath(path, kind) {
 
 function updateNamerQueue() {
   const count = namerQueue.size;
-  $('#namer-queue-count').textContent = count ? `已加入 ${count} 个目录，将严格串行处理` : '尚未选择项目';
+  const providers = new Set([...namerQueue.values()].map(item => item.provider || item.path.split('/')[1]));
+  $('#namer-queue-count').textContent = count ? `已选 ${count} 个目录 · ${providers.size} 个网盘 · 串行处理` : '展开目录，勾选需要改名的作品';
   $('#namer-plan-queue').disabled = !count;
-  $('#namer-add-all').disabled = !namerPendingItems.length;
-  $$('.namer-inbox-item').forEach(item => {
-    const selected = namerQueue.has(item.dataset.path);
-    item.classList.toggle('selected', selected);
-    const action = item.querySelector('small i');
-    if (action) action.textContent = selected ? '已加入 ✓' : '加入队列 →';
+  $('#namer-clear-queue').disabled = !count;
+  $$('.preset-work-check').forEach(check => {
+    check.checked = namerQueue.has(check.dataset.path);
+    check.closest('.preset-work').classList.toggle('selected', check.checked);
   });
+  const selected = $('#namer-selected'); selected.hidden = !count;
+  selected.replaceChildren();
+  for (const item of namerQueue.values()) {
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'namer-selected-item';
+    remove.textContent = `${providerLabel(item.provider || item.path.split('/')[1])} · ${item.name} ×`; remove.title = `移除：${item.path}`;
+    remove.addEventListener('click', () => { namerQueue.delete(item.path); updateNamerQueue(); }); selected.append(remove);
+  }
 }
 
 function addNamerItems(items) {
+  const paths = new Set([...namerQueue.keys(), ...items.map(item => item.path)]);
+  if (paths.size > 30) { toast('每批最多 30 个目录，请分批勾选；当前选择已保留', true); updateNamerQueue(); return; }
   items.forEach(item => namerQueue.set(item.path, item));
   updateNamerQueue();
 }
 
-async function loadNamerInbox() {
-  const target = $('#namer-inbox');
-  const button = $('#namer-inbox-reload');
-  button.disabled = true;
-  target.className = 'inbox-loading-wrap';
-  target.innerHTML = '<div class="inbox-loading-card"><span></span><div><strong>正在检测新资源</strong><small>只读浅层检查，不读取视频</small></div></div>';
-  try {
-    const data = await fetchNamerPending();
-    namerPendingItems = data.pending;
-    const grouped = groupByProvider(data.pending);
-    target.className = 'inbox-panel';
-    const providerSummary = Object.entries(grouped).map(([provider, items]) => `<span><b>${escapeHtml(providerLabel(provider))}</b>${items.length}</span>`).join('');
-    target.innerHTML = `<div class="inbox-heading"><div class="inbox-title"><span class="inbox-orb">✦</span><div><strong>真正需要改名的资源</strong><span>已核验实际改名动作${data.filtered_completed ? ` · 自动隐藏 ${data.filtered_completed} 个已完成项目` : ''}</span></div></div><div class="inbox-total"><b>${data.pending_count}</b><span>待处理</span></div></div><div class="provider-summary">${providerSummary || '<span><b>已清空</b>0</span>'}</div>${Object.entries(grouped).length ? `<div class="inbox-body">${Object.entries(grouped).map(([provider, items]) => `<section class="provider-task-group"><div class="provider-task-head"><div><strong>${escapeHtml(providerLabel(provider))}</strong><span>${items.length} 项待处理</span></div><button class="mini-button namer-add-provider" type="button" data-provider="${escapeHtml(provider)}">本盘一键加入</button></div><div class="compact-task-list">${items.map(item => `<button class="compact-task namer-inbox-item" type="button" data-path="${escapeHtml(item.path)}" data-kind="${escapeHtml(item.kind)}"><span>${escapeHtml(item.name)}</span><small>${item.reason === 'subscription_update' ? '订阅更新' : '新入库'} · ${item.kind === 'movie' ? '电影' : '剧集'} · ${escapeHtml(item.category)}<i>加入队列 →</i></small></button>`).join('')}</div></section>`).join('')}</div>` : '<div class="history-empty inbox-empty">没有发现仍需改名的资源。</div>'}`;
-    $$('.namer-inbox-item').forEach(button => button.addEventListener('click', () => {
-      const item = namerPendingItems.find(value => value.path === button.dataset.path);
-      if (!item) return;
-      if (namerQueue.has(item.path)) namerQueue.delete(item.path); else namerQueue.set(item.path, item);
-      updateNamerQueue();
-    }));
-    $$('.namer-add-provider').forEach(button => button.addEventListener('click', () => addNamerItems(grouped[button.dataset.provider] || [])));
-    updateNamerQueue();
-  } catch (error) {
-    target.className = 'inbox-loading-wrap';
-    target.innerHTML = `<div class="history-empty">检测失败：${escapeHtml(error.message || error)}</div>`;
-    toast(error.message || String(error), true);
-  } finally { button.disabled = false; }
-}
-
-$('#namer-inbox-reload').addEventListener('click', loadNamerInbox);
-$('#namer-add-all').addEventListener('click', () => addNamerItems(namerPendingItems));
 $('#namer-plan-queue').addEventListener('click', planNamerQueue);
-$('#emby-reload-all').addEventListener('click', loadEmbyCenter);
-$('#emby-run-queue').addEventListener('click', runEmbyQueue);
+$('#namer-clear-queue').addEventListener('click', () => { namerQueue.clear(); updateNamerQueue(); });
 
 async function planNamerQueue() {
   const button = $('#namer-plan-queue');
   const target = $('#namer-result');
   const items = [...namerQueue.values()];
+  const sourceParent = $('#namer-source-parent').checked;
   namerBatchPlans = [];
   button.disabled = true;
   for (let index = 0; index < items.length; index += 1) {
@@ -424,8 +786,8 @@ async function planNamerQueue() {
     target.className = 'result-space job-card';
     target.innerHTML = `<span class="status running">预览中</span><h3>正在串行识别 ${index + 1}/${items.length}</h3><p>${escapeHtml(item.path)}</p><p>逐个调用 TMDb 并生成只读计划，不会在此阶段改名。</p>`;
     try {
-      const identified = await api('/api/namer/identify', {path:item.path, kind:item.kind, title_style:'auto', source_parent:false});
-      const plan = await api('/api/namer/plan', {path:item.path, tmdb_id:identified.tmdb_id, kind:item.kind, title_style:'auto', source_parent:false});
+      const identified = await api('/api/namer/identify', {path:item.path, kind:item.kind, title_style:'auto', source_parent:sourceParent});
+      const plan = await api('/api/namer/plan', {path:item.path, tmdb_id:identified.tmdb_id, kind:identified.kind || item.kind, title_style:'auto', source_parent:sourceParent, fill_missing:$('#namer-fill-missing').checked});
       namerBatchPlans.push({...plan, queue_item:item});
     } catch (error) {
       namerBatchPlans.push({queue_item:item, error:error.message || String(error), operations:[], conflicts:[]});
@@ -440,6 +802,26 @@ async function planNamerQueue() {
     $('#batch-fill-confirm').addEventListener('click', () => { $('#batch-apply-confirm').value = `批量执行 ${executable.length} 个目录`; });
     $('#batch-apply-plan').addEventListener('click', () => applyNamerBatch(executable));
   }
+  target.querySelectorAll('.compact-task-row').forEach((row, index) => {
+    const plan = namerBatchPlans[index];
+    if (!plan || (!plan.error && !plan.conflicts.length)) return;
+    const actions = document.createElement('div'); actions.className = 'actions';
+    const review = document.createElement('button'); review.type = 'button'; review.className = 'mini-button'; review.textContent = '立即处理';
+    review.addEventListener('click', () => {
+      $('#namer-path').value = plan.queue_item.path;
+      $('#namer-kind').value = plan.queue_item.kind || 'tv';
+      if (plan.plan_id) renderPlan(plan);
+      else {
+        $('#namer-id').value = '';
+        const advanced = $('#namer-id').closest('details'); if (advanced) advanced.open = true;
+        $('#namer-id').focus(); toast('可填写 TMDb 编号后重新识别');
+      }
+      $('#namer-form').scrollIntoView({behavior:'smooth', block:'start'});
+    });
+    const skip = document.createElement('button'); skip.type = 'button'; skip.className = 'mini-button'; skip.textContent = '本次跳过';
+    skip.addEventListener('click', () => { namerQueue.delete(plan.queue_item.path); row.querySelector('.status').textContent = '已跳过'; updateNamerQueue(); });
+    actions.append(review, skip); row.append(actions);
+  });
   updateNamerQueue();
 }
 
@@ -460,132 +842,13 @@ async function pollNamerBatchJob(jobId) {
     target.className = 'result-space job-card';
     target.innerHTML = `<span class="status ${escapeHtml(job.status)}">${job.status === 'running' ? '执行中' : (job.status === 'completed' ? '已完成' : '部分失败')}</span><h3>${job.status === 'running' ? `正在串行改名第 ${job.current_index || 1}/${job.total} 个目录` : `批量改名完成 ${job.completed || 0}/${job.total}`}</h3>${namerProgress(job)}${job.output ? `<pre>${escapeHtml(job.output)}</pre>` : '<p>服务器一次只处理一个目录，页面可以关闭。</p>'}`;
     if (job.status === 'running') setTimeout(() => pollNamerBatchJob(jobId), 2500);
-    else { namerQueue.clear(); updateNamerQueue(); loadNamerInbox(); toast(job.status === 'completed' ? '批量改名完成' : '部分目录失败，请查看结果', job.status !== 'completed'); }
-  } catch (error) { fail(target, error); }
-}
-
-function updateEmbyQueue() {
-  const button = $('#emby-run-queue');
-  const count = embyQueue.size;
-  $('#emby-queue-count').textContent = count ? `已收集 ${count} 个项目` : '尚未选择项目';
-  button.disabled = !count;
-  $$('.queue-item').forEach(item => {
-    const selected = embyQueue.has(item.dataset.path);
-    item.classList.toggle('selected', selected);
-    item.textContent = selected ? '移出集合' : '加入集合';
-  });
-}
-
-function addProviderToQueue(items) {
-  items.forEach(item => embyQueue.set(item.path, item));
-  updateEmbyQueue();
-}
-
-async function loadEmbyCenter() {
-  const button = $('#emby-reload-all');
-  button.disabled = true;
-  button.textContent = '正在检测…';
-  await loadEmbyPending();
-  await loadEmbyResiduals();
-  await loadEmbyDuplicates();
-  button.disabled = false;
-  button.textContent = '重新检测';
-}
-
-async function loadEmbyResiduals() {
-  const target = $('#emby-residuals');
-  loading(target, '正在核对 Emby 条目与本地 STRM 索引');
-  try {
-    const data = await api('/api/emby/residuals');
-    const grouped = groupByProvider(data.items);
-    target.className = 'result-space result-card';
-    target.innerHTML = `<div class="result-toolbar"><div><strong>${data.count ? `${data.count} 个 Emby 残留项目` : '没有发现 Emby 残留'}</strong><div class="meta">云盘或 STRM 已不存在，但 Emby 数据库仍保留的作品</div></div><span class="status ${data.count ? 'failed' : 'compliant'}">${data.count ? '建议删除' : '正常'}</span></div><div class="provider-groups">${Object.entries(grouped).map(([provider, items]) => `<section class="provider-task-group"><div class="provider-task-head"><div><strong>${escapeHtml(providerLabel(provider))}</strong><span>${items.length} 项残留</span></div></div><div class="compact-task-list">${items.map(item => `<article class="compact-task-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.type === 'Series' ? '剧集' : '电影')} · Emby ID ${escapeHtml(item.id)}</small></div><span class="status failed">待删除</span></article>`).join('')}</div></section>`).join('') || '<div class="history-empty">Emby 数据库与当前 STRM 索引一致。</div>'}</div>`;
-  } catch (error) { fail(target, error); }
-}
-
-async function loadEmbyPending() {
-  const target = $('#emby-pending');
-  loading(target, '正在按网盘收集待刷新项目');
-  try {
-    const data = await fetchEmbyPending();
-    const grouped = groupByProvider(data.pending);
-    target.className = 'result-space result-card';
-    target.innerHTML = `<div class="result-toolbar"><div><strong>${data.pending_count ? `${data.pending_count} 个项目尚未进入 Emby` : '当前没有待刷新项目'}</strong><div class="meta">已检查 ${data.scanned_roots} 个分类 · 云盘 ${data.cloud_titles} 项 · 已入库 ${data.present_titles} 项</div></div><span class="status ${data.pending_count ? 'planned' : 'compliant'}">${data.pending_count ? '待收集' : '已同步'}</span></div><div class="provider-groups">${Object.entries(grouped).map(([provider, items]) => `<section class="provider-task-group"><div class="provider-task-head"><div><strong>${escapeHtml(providerLabel(provider))}</strong><span>${items.length} 项待刷新</span></div><button class="mini-button queue-provider" type="button" data-provider="${escapeHtml(provider)}">加入本盘全部</button></div><div class="compact-task-list">${items.map(item => `<article class="compact-task-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.category)}</small></div><button class="mini-button queue-item" type="button" data-path="${escapeHtml(item.path)}">加入集合</button></article>`).join('')}</div></section>`).join('') || '<div class="history-empty">云盘作品目录均已存在于 Emby STRM 索引。</div>'}</div>`;
-    $$('.queue-item').forEach(item => item.addEventListener('click', () => {
-      const found = data.pending.find(entry => entry.path === item.dataset.path);
-      if (embyQueue.has(item.dataset.path)) embyQueue.delete(item.dataset.path);
-      else if (found) embyQueue.set(found.path, found);
-      updateEmbyQueue();
-    }));
-    $$('.queue-provider').forEach(item => item.addEventListener('click', () => addProviderToQueue(grouped[item.dataset.provider] || [])));
-    updateEmbyQueue();
-  } catch (error) { fail(target, error); }
-}
-
-async function cleanDuplicateSelection(planId, groupIds, count, label, button) {
-  if (!confirm(`${label}：将保留每集最合理的一份，其余 ${count} 项移入可恢复隔离区。是否继续？`)) return;
-  button.disabled = true;
-  try {
-    const result = await api('/api/emby/duplicates/clean', {plan_id:planId, group_ids:groupIds, confirmation:`清理 ${count} 项`});
-    toast(`已隔离 ${result.moved} 个重复 STRM`);
-    await loadEmbyDuplicates();
-  } catch (error) { toast(error.message || String(error), true); button.disabled = false; }
-}
-
-async function loadEmbyDuplicates() {
-  const target = $('#emby-duplicates');
-  loading(target, '正在按网盘和剧集汇总重复 STRM');
-  try {
-    const data = await api('/api/emby/duplicates');
-    const providers = {};
-    data.groups.forEach(group => {
-      const provider = providers[group.provider] ||= {};
-      const series = provider[group.series] ||= {series:group.series, category:group.category, ids:[], groups:0, count:0};
-      series.ids.push(group.id); series.groups += 1; series.count += group.remove.length;
-    });
-    target.className = 'result-space result-card';
-    target.innerHTML = `<div class="result-toolbar"><div><strong>${data.group_count} 组重复 STRM，涉及 ${Object.values(providers).reduce((sum, provider) => sum + Object.keys(provider).length, 0)} 部作品</strong><div class="meta">不显示冗长文件路径；预计隔离 ${data.remove_count} 项</div></div>${data.remove_count ? `<button class="mini-button danger-action clean-all-duplicates" type="button">一键删除全部重复项</button>` : '<span class="status compliant">无重复</span>'}</div><div class="provider-groups">${Object.entries(providers).map(([provider, seriesMap]) => { const series = Object.values(seriesMap); const ids = series.flatMap(item => item.ids); const count = series.reduce((sum,item) => sum + item.count, 0); return `<section class="provider-task-group"><div class="provider-task-head"><div><strong>${escapeHtml(providerLabel(provider))}</strong><span>${series.length} 部作品 · ${count} 个重复项</span></div><button class="mini-button danger-action clean-provider-duplicates" data-provider="${escapeHtml(provider)}" type="button">删除本盘重复</button></div><div class="compact-task-list">${series.map(item => `<article class="compact-task-row"><div><strong>${escapeHtml(item.series)}</strong><small>${escapeHtml(item.category)} · ${item.groups} 集重复 · 删除 ${item.count} 项</small></div><button class="mini-button danger-action clean-series-duplicates" data-provider="${escapeHtml(provider)}" data-series="${escapeHtml(item.series)}" type="button">删除本剧重复</button></article>`).join('')}</div></section>`; }).join('') || '<div class="history-empty">没有发现可确定的重复 STRM。</div>'}</div>`;
-    const allButton = $('.clean-all-duplicates');
-    if (allButton) allButton.addEventListener('click', () => cleanDuplicateSelection(data.plan_id, 'all', data.remove_count, '全部网盘', allButton));
-    $$('.clean-provider-duplicates').forEach(button => button.addEventListener('click', () => {
-      const series = Object.values(providers[button.dataset.provider]);
-      cleanDuplicateSelection(data.plan_id, series.flatMap(item => item.ids), series.reduce((sum,item) => sum + item.count, 0), providerLabel(button.dataset.provider), button);
-    }));
-    $$('.clean-series-duplicates').forEach(button => button.addEventListener('click', () => {
-      const item = providers[button.dataset.provider][button.dataset.series];
-      cleanDuplicateSelection(data.plan_id, item.ids, item.count, item.series, button);
-    }));
-  } catch (error) { fail(target, error); }
-}
-
-async function runEmbyQueue() {
-  const button = $('#emby-run-queue');
-  button.disabled = true;
-  try {
-    const data = await api('/api/emby/refresh-queue', {paths:[...embyQueue.keys()]});
-    embyQueue.clear();
-    updateEmbyQueue();
-    toast('刷新集合已在后台严格串行启动');
-    pollJob(data.job_id);
-  } catch (error) { toast(error.message || String(error), true); updateEmbyQueue(); }
-}
-
-async function pollJob(jobId) {
-  const target = $('#emby-result');
-  try {
-    const job = await api(`/api/jobs/${jobId}`);
-    const queued = job.type === 'emby_refresh_queue';
-    const progress = queued ? `${job.completed || 0}/${job.total || 0} 已完成${job.failed ? ` · ${job.failed} 失败` : ''}` : (job.path || '');
-    const current = queued && job.current ? `<p>当前：${escapeHtml(job.current)}</p>` : '';
-    target.className = 'result-space job-card';
-    target.innerHTML = `<span class="status ${escapeHtml(job.status)}">${job.status === 'running' ? '执行中' : (job.status === 'completed' ? '已完成' : '失败')}</span><h3>${job.status === 'running' ? '正在串行同步并刷新 Emby' : (job.status === 'completed' ? '刷新完成' : '刷新已结束，部分项目失败')}</h3><p>${escapeHtml(progress)}</p>${current}${job.output ? `<pre>${escapeHtml(job.output)}</pre>` : '<p>任务在服务器后台低负载运行，页面可以关闭。</p>'}`;
-    if (job.status === 'running') setTimeout(() => pollJob(jobId), 2500);
     else {
-      toast(job.status === 'completed' ? 'Emby 刷新完成' : 'Emby 刷新完成，但有失败项', job.status !== 'completed');
-      loadEmbyPending();
+      namerQueue.clear(); updateNamerQueue();
+      toast(job.status === 'completed' ? '批量改名完成' : '部分目录失败，请查看任务记录', job.status !== 'completed');
     }
   } catch (error) { fail(target, error); }
 }
+
 
 async function checkHealth() {
   try {
@@ -597,10 +860,80 @@ async function checkHealth() {
   }
 }
 
+let litepanChanges = [];
+async function loadLitepanChanges() {
+  const status = $('#litepan-changes-status');
+  try {
+    const data = await api('/api/litepan/changes');
+    litepanChanges = data.items || [];
+    status.textContent = !data.ready ? '等待首次同步建立基线' : data.pending
+      ? `${data.pending} 项内容变化 · 本批 ${litepanChanges.length} 项 · 加入后仍需预览确认`
+      : `暂无新变化 · 已跟踪 ${data.trackedWorks} 个目录 · 每 5 分钟增量核对`;
+    $('#litepan-changes-add').disabled = !litepanChanges.length;
+    $('#litepan-changes-ack').disabled = !litepanChanges.length;
+  } catch (error) { status.textContent = `变化记录暂不可用：${error.message}`; }
+}
+$('#litepan-changes-reload').addEventListener('click', loadLitepanChanges);
+$('#litepan-changes-add').addEventListener('click', () => addNamerItems(litepanChanges));
+$('#litepan-changes-ack').addEventListener('click', async () => {
+  if (!confirm(`📋 将本批 ${litepanChanges.length} 项标记为已处理？仅清除变化提示，不修改网盘文件。`)) return;
+  try {
+    await api('/api/litepan/changes/ack', {items:litepanChanges.map(({id, signature}) => ({id, signature}))});
+    await loadLitepanChanges(); toast('已更新变化记录');
+  } catch (error) { toast(error.message, true); }
+});
+
 $('#today').textContent = new Intl.DateTimeFormat('zh-CN', {month:'long', day:'numeric', weekday:'short'}).format(new Date());
 applyScene();
 setInterval(applyScene, 300000);
 const initial = location.hash.slice(1);
-if (titles[initial]) switchView(initial);
-else { namerInboxLoaded = true; loadNamerInbox(); }
+switchView(initial);
+updateNamerQueue();
 checkHealth();
+$('#namer-utilities').addEventListener('toggle', () => {
+  if ($('#namer-utilities').open) loadLitepanChanges();
+});
+$('#shelf-reload').addEventListener('click', loadShelf);
+$('#watched-cancel').addEventListener('click', () => $('#watched-dialog').close());
+$('#watched-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const item = savedSeries.get(watchedEditingId); if (!item?.watched) return;
+  const day = $('#watched-date').value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day > watchDateToday() || day < '1900-01-01') {
+    $('#watched-feedback').textContent = '请选择 1900 年至今天之间的有效日期'; return;
+  }
+  $('#watched-save').disabled = true;
+  try {
+    const data = await api('/api/tmdb/shelf', {id:watchedEditingId,action:'watched',enabled:true,watchedDate:day});
+    renderShelf(data.items); if (data.artwork_pending) scheduleShelfRefresh();
+    $('#watched-dialog').close(); toast('✓ 观看日期已保存，时间线已重新排列');
+  } catch (error) { $('#watched-feedback').textContent = error.message; }
+  finally { $('#watched-save').disabled = false; }
+});
+$$('[data-shelf-filter]').forEach(button => button.addEventListener('click', () => { shelfFilter = button.dataset.shelfFilter; renderShelf([...savedSeries.values()]); }));
+loadShelf();
+
+for (const provider of mediaPathGroups.filter(item => item.root !== 'Baidu')) {
+  for (const [folder,label,kind] of [['00影','电影','movie'], ['00剧','剧集','tv'], ['00漫','动漫','tv']]) {
+    const button = document.createElement('button'); button.className = 'mini-button'; button.type = 'button'; button.textContent = `${provider.label} · ${label}`;
+    button.addEventListener('click', async () => {
+      const host = $('#scout-directory-items'); button.disabled = true; host.textContent = '正在读取此目录…';
+      try {
+        const data = await api('/api/library/directories?path=' + encodeURIComponent(`/${provider.root}/@scout/${folder}`));
+        const categoryNames = new Set(['01国','01外','01中','01美','01欧','01日','01台','01英','01韩','02其他','总其他']);
+        const items = sortDirectories(data.directories).filter(item => !categoryNames.has(item.name)).map(item => ({...item, provider:provider.root, kind}));
+        host.replaceChildren();
+        const heading = document.createElement('p'); heading.className = 'meta'; heading.textContent = `${provider.label} / ${folder} · ${items.length} 个直收作品目录（不将地区分类当作品）`; host.append(heading);
+        if (items.length) { const all = document.createElement('button'); all.type = 'button'; all.className = 'mini-button'; all.textContent = '加入本目录（最多 30 项）'; all.onclick = () => addNamerItems(items); host.append(all); }
+        for (const item of items) {
+          const row = document.createElement('label'); row.className = 'preset-work';
+          const check = document.createElement('input'); check.type = 'checkbox'; check.className = 'preset-work-check'; check.dataset.path = item.path; check.checked = namerQueue.has(item.path);
+          check.onchange = () => { if (check.checked) addNamerItems([item]); else { namerQueue.delete(item.path); updateNamerQueue(); } };
+          const name = document.createElement('span'); name.textContent = item.name; row.append(check, name); host.append(row);
+        }
+        if (!items.length) host.append(document.createTextNode('此目录暂无作品；尚未转存时为空属正常。'));
+      } catch (error) { host.textContent = `目录暂不可用：${error.message}。可在巡影确认目录设置后重试。`; }
+      finally { button.disabled = false; }
+    }); $('#scout-roots').append(button);
+  }
+}

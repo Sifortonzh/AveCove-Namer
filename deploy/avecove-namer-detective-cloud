@@ -1,0 +1,175 @@
+#!/bin/sh
+set -eu
+export AVECOVE_NAMER_BACKEND=litepan
+
+provider=${1:?Usage: avecove-namer-detective-cloud guangya|baidu|115|123}
+base=/opt/docker/avecove-namer/detective/$provider
+state=$base/state.json
+work_dir=$base/jobs
+summary=$base/last-summary.json
+tmdb_token=/opt/docker/avecove-namer/secrets/tmdb.token
+refresh_worker=${AVECOVE_REFRESH_WORKER:-}
+max_seasons=5
+mkdir -p "$base" "$work_dir"
+
+in_quiet_hours() {
+  hour=$(TZ=Asia/Shanghai date +%H)
+  case "$hour" in
+    14|15|16|17|18|19|20|21) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+wait_until_allowed() {
+  announced=false
+  while in_quiet_hours; do
+    if [ "$announced" = false ]; then
+      echo "Quiet hours are active; pausing this queued task without running the Namer scanner."
+      announced=true
+    fi
+    sleep 300
+  done
+}
+
+if in_quiet_hours; then
+  echo "Namer quiet hours are active (14:00-21:59 Asia/Shanghai); skipping $provider."
+  exit 0
+fi
+
+# One global blocking queue for manual jobs and every cloud provider.
+# If an earlier scan is still active, wait here and continue automatically.
+exec 8>/run/lock/avecove-namer-guided.lock
+if ! flock -n 8; then
+  echo "Another Namer job is active; waiting in the single-provider queue."
+  flock 8
+fi
+exec 9>/run/lock/avecove-namer-detective.lock
+flock 9
+
+# A queued job may acquire the lock after quiet hours have begun. Keep the same
+# daily task alive as a tiny shell process, then continue when the window opens.
+wait_until_allowed
+
+case "$provider" in
+  guangya)
+    set -- \
+      --watch tv:/GuangYa/00剧/01美 \
+      --watch tv:/GuangYa/00剧/01中 \
+      --watch tv:/GuangYa/00剧/01韩 \
+      --watch tv:/GuangYa/00剧/01日 \
+      --watch tv:/GuangYa/00剧/01英 \
+      --watch movie:/GuangYa/00影/01国 \
+      --watch movie:/GuangYa/00影/01外 \
+      --watch tv:/GuangYa/00漫/01中 \
+      --watch tv:/GuangYa/00漫/01日 \
+      --watch tv:/GuangYa/00综艺
+    ;;
+  baidu)
+    set -- \
+      --watch tv:/Baidu/00剧/01中 \
+      --watch tv:/Baidu/00剧/01美 \
+      --watch tv:/Baidu/00剧/01韩 \
+      --watch movie:/Baidu/00影/01国 \
+      --watch movie:/Baidu/00影/01外 \
+      --watch tv:/Baidu/00漫/01中 \
+      --watch tv:/Baidu/00漫/01日
+    ;;
+  115)
+    set -- \
+      --watch tv:/115/00剧/01美 \
+      --watch tv:/115/00剧/01中 \
+      --watch tv:/115/00剧/01日 \
+      --watch tv:/115/00剧/01英 \
+      --watch tv:/115/00剧/01韩 \
+      --watch tv:/115/00剧/01欧 \
+      --watch movie:/115/00影/01国 \
+      --watch movie:/115/00影/01外 \
+      --watch tv:/115/00漫/01中 \
+      --watch tv:/115/00漫/01日 \
+      --watch tv:/115/00漫/01美 \
+      --watch tv:/115/00综艺
+    ;;
+  123)
+    set -- \
+      --watch tv:/123/00剧/01中 \
+      --watch tv:/123/00剧/01美 \
+      --watch tv:/123/00剧/01韩 \
+      --watch movie:/123/00影/01国 \
+      --watch movie:/123/00影/01外 \
+      --watch tv:/123/00漫/01中 \
+      --watch tv:/123/00综艺
+    ;;
+  *)
+    echo "Unsupported provider: $provider" >&2
+    exit 2
+    ;;
+esac
+
+mode=--execute
+if [ ! -s "$state" ]; then
+  mode=--bootstrap
+fi
+
+changed_roots_file=$base/changed-roots-current.txt
+: > "$changed_roots_file"
+scan_pass=1
+
+while :; do
+
+  echo "Starting $provider scan batch $scan_pass (up to $max_seasons seasons per title)."
+  nice -n 15 ionice -c 3 avecove-namer detect \
+    --tmdb-token-file "$tmdb_token" \
+    "$@" \
+    --state "$state" \
+    --work-dir "$work_dir" \
+    --summary "$summary" \
+    --max-operations 200 \
+    --max-seasons "$max_seasons" \
+    --title-style auto \
+    "$mode"
+
+  python3 - "$summary" >> "$changed_roots_file" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    summary = json.load(handle)
+for root in summary.get("changed_roots", []):
+    print(root)
+PY
+
+  if [ "$mode" = "--bootstrap" ]; then
+    break
+  fi
+
+  remaining=$(python3 - "$summary" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    summary = json.load(handle)
+events = summary.get("events", [])
+print(sum(1 for event in events if event.get("status") == "applied_partial" or int(event.get("remaining_operations") or 0) > 0))
+PY
+  )
+  if [ "$remaining" -eq 0 ]; then
+    break
+  fi
+  if [ "$scan_pass" -ge 20 ]; then
+    echo "Stopping after 20 batches; pending work remains recorded for the next daily run."
+    break
+  fi
+  scan_pass=$((scan_pass + 1))
+  sleep 10
+done
+
+if [ "$mode" = "--execute" ] && [ -n "$refresh_worker" ] && [ -x "$refresh_worker" ]; then
+  sort -u "$changed_roots_file" | while IFS= read -r prefix; do
+    [ -n "$prefix" ] || continue
+    REFRESH_CPU_LIMIT=0.25 \
+    REFRESH_ALLOW_CONTAINERS=__none__ \
+    REFRESH_PRESERVE_IMAGES=1 \
+    REFRESH_PRESERVE_SIDECARS=1 \
+      "$refresh_worker" --prefix "$prefix"
+  done
+fi

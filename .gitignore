@@ -8,4 +8,18 @@ dist/
 work/
 *.token
 *.sqlite3
+secrets/
+.env
+.env.*
+!.env.example
+.deployed-commit
+*.pem
+*.key
+*.log
+*.bak
+scripts/repair_*.py
+scripts/resume_season_audit_batch.py
+scripts/apply_fast_rename_profile.py
+scripts/configure_scout_*.py
+deploy/emby.avecrouge.top.conf
 

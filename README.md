@@ -1,225 +1,53 @@
 # AveCove Namer
 
-Safe, reviewable media naming for OpenList, Emby, Infuse, and SenPlayer.
+Reviewable cloud media naming, original-language TMDb metadata, and a personal series shelf.
 
-[简体中文](README.zh-CN.md)
+[简体中文](README.zh-CN.md) · [Release workflow](docs/releases.md) · [Changelog](CHANGELOG.md)
 
-> Status: v0.5.2 alpha. Start with a small canary folder and review every plan before execution.
+## Current release: 0.6.0
 
-## Detective automation
+- **LitePan first:** browse only selected folders, select works across drives, preview a batch, then explicitly confirm changes. No full-drive scan is required.
+- **Original-language naming:** consistent parent and child names, `{tmdb=...}` IDs, season names and source metadata. Movies, series, and movie collections are supported.
+- **Review before mutation:** ambiguity and collisions stay reviewable; stale-source checks and rollback journals protect execution. Resolution variants are not automatically deleted.
+- **TMDb workspace:** numeric S/E inputs, source-language episode details, image selection by season, and copyable episode titles.
+- **My series:** Favorite, Watching, last queried episode, Watched dates, and a monthly timeline. Posters prefer original-language artwork, then textless artwork.
+- **Focused UI:** a prominent cross-drive batch queue; optional Scout folders and LitePan/Vesta updates live in a collapsed auxiliary panel. Mobile layout and dark/light scenes are included.
+- **Release visibility:** `/api/health` reports the software version, deployed Git revision, and active job count.
 
-OpenList rename pacing can be configured per storage with a JSON file at `/opt/docker/avecove-namer/rate-limits.json` (override with `AVECOVE_NAMER_RATE_PROFILE`). Keys are `/123`, `/Baidu`, `/Quark`, and `/GuangYa`; values are additional seconds between completed rename requests. Zero keeps requests sequential without an artificial delay. Unconfigured storage, including `/115`, retains the default three seconds. Provider errors restore a minimum three-second delay for that storage in the current process and trigger exponential retry backoff. Short directory probes do not establish a provider's long-term file-operation limit.
+OpenList and Emby compatibility code remains for older installations. The current web navigation has **Namer / TMDb / Records**, not an Emby refresh page. Naming does not automatically trigger Emby refreshes. Optional historical integrations must be configured separately.
 
-`avecove-namer detect` fingerprints works under one or more watched OpenList roots. Movie collections are traversed and split into individual movie roots while the outer publisher/collection folders remain intact. Movie identity can be recovered from the media filename when a release folder is noisy, bilingual, or generic; BDMV and VIDEO_TS layouts resolve to the movie folder above the disc structure. Existing `{tmdb=...}` tags are trusted, and untagged works are applied only when title, year, and TMDB produce a unique high-confidence match. Ambiguous matches and conflicting plans are kept for review instead of being renamed.
+## Run and test
 
-The included low-load server wrapper watches the four GuangYa TV roots, keeps state and rollback journals, and refreshes only changed STRM prefixes. It runs daily at 00:00, 02:00, 06:00, 10:00, 14:00, 18:00, and 23:00 in Asia/Shanghai, with CPU, memory, I/O, and lock limits. Missed runs are not replayed after downtime. Bootstrap the current library once before enabling its timer:
+Python 3.10+; Node.js 22 is used for UI contract tests, not as an application server.
 
-```bash
-sudo avecove-namer-detective --bootstrap
-sudo systemctl enable --now avecove-namer-detective.timer
-```
-
-AveCove Namer is an independent, clean-room media naming tool built for cloud-drive libraries. Its default TV rule deliberately prioritizes reliable library matching over episode-title decoration:
-
-```text
-Modern.Family.2009.S01E01.1080p.BluRay.x265.DTS.mkv
-Modern.Family.2009.S01E01.1080p.BluRay.x265.DTS.zh-CN.sup
-```
-
-The series year is included, episode titles are omitted, and useful release metadata is retained.
-
-## What v0.4 includes
-
-- Local filesystem and OpenList backends.
-- Year-aware TV and movie naming.
-- Per-movie detection inside nested publisher, actor, franchise, and disc-image collections.
-- Filename fallback for noisy or bilingual movie release folders.
-- Episode-filename fallback for TV folders with bracketed titles, missing years, or publisher release labels.
-- Origin-aware movie and series folder naming with Emby TMDB ID tags.
-- Automatic selected-work-folder naming whenever a verified TMDB ID is supplied.
-- Recursive media naming without renaming or moving existing season folders such as `Season 01`, `Season01`, `S01`, or `第一季`.
-- Technical/release metadata preservation.
-- Sidecar subtitle pairing with a full video-stem match.
-- Read-only JSON and optional CSV plans.
-- Existing-target and duplicate-target conflict detection.
-- Exact root/count confirmation before mutations.
-- Stale-source checks and append-only rollback journals.
-- Read-only TMDB title search as a verification aid.
-- No database, background scheduler, or resident service.
-
-TMDB search accepts either an API Read Access Token or a v3 API Key stored in a `0600` credential file.
-
-## Private web interface
-
-`avecove-namer-web` serves a responsive private media toolbox with TMDB search, original-language episode metadata, reviewable Namer plans, Detective results, and targeted Emby refreshes. Rename execution still requires an exact operation-count confirmation, keeps a rollback journal, and starts the existing low-load Emby refresh workflow. Credentials stay in protected server-side files and are never returned to the browser.
-
-```bash
+```sh
+python3 -m pip install -e .
+python3 -m unittest discover -s tests -v
+node tests/test_web_ui.mjs
+avecove-namer --help
 avecove-namer-web --host 127.0.0.1 --port 8787
 ```
 
-Deploy it behind authenticated HTTPS. Example systemd and Nginx configurations are included in `deploy/`.
+Credentials are read from protected server-side files. Configure the `AVECOVE_*` environment variables in `webapp.Settings.from_env`; start from the service examples under `deploy/`. Do not commit runtime data, cloud roots, account passwords, API keys, or execution journals. Keep the app behind your existing HTTPS/access arrangement; the publisher does not add an authentication layer.
 
-## Quick start
+## Rename pacing
 
-Python 3.10 or newer is required.
+LitePan operations remain sequential per provider. 115 starts at 500 ms, reduces by 50 ms after 50 successes, and has a 300 ms floor; persisted backoff can make its actual interval higher. Other providers default to **0 ms additional delay**, not parallel/unlimited calls. Rate-limit or transient provider errors increase the interval; ambiguous timed-out moves are not blindly retried. Persisted state lives outside the release directory.
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-avecove-namer --help
+## Publish
+
+Commit reviewed changes, then run:
+
+```sh
+python3 scripts/publish.py --host YOUR_EXISTING_SSH_ALIAS --url https://YOUR_HOST/media-tools
 ```
 
-### Local canary
+The publisher runs local tests, pushes the exact commit through Git SSH, archives only committed files, backs up the previous server source, switches releases, and verifies the **same revision** locally and publicly. Failed local health checks restore the old release. Running jobs block deployment. GitHub Actions independently tests Python 3.10/3.11/3.13, UI contracts and package builds.
 
-Generate a plan without changing files:
+This is an operator-initiated publisher using existing SSH access, **not unattended push-to-production**. No new GitHub deployment credentials are created or copied. See [release details](docs/releases.md).
 
-```bash
-avecove-namer plan \
-  --backend local \
-  --path "/media/Modern Family (2009)" \
-  --output work/modern-family.json \
-  --csv work/modern-family.csv
-```
+## Cloud skill integration
 
-Preview it again:
+Use an acquisition/browse skill to find a specific directory, then pass its provider, path and TMDb identity to Namer's preview stage. Keep execution inside Namer's explicit confirmation and journal flow. Do not duplicate credentials or let a skill bypass the plan. See [integration contract](docs/cloud-skill.md).
 
-```bash
-avecove-namer apply \
-  --backend local \
-  --plan work/modern-family.json \
-  --journal work/modern-family.rollback.jsonl
-```
-
-Only after reviewing the plan, execute it with the exact root and operation count printed by the preview:
-
-```bash
-avecove-namer apply \
-  --backend local \
-  --plan work/modern-family.json \
-  --journal work/modern-family.rollback.jsonl \
-  --execute \
-  --confirm-root "/media/Modern Family (2009)" \
-  --confirm-count 24
-```
-
-Preview and execute rollback:
-
-```bash
-avecove-namer rollback --backend local \
-  --journal work/modern-family.rollback.jsonl
-
-avecove-namer rollback --backend local \
-  --journal work/modern-family.rollback.jsonl --execute
-```
-
-### OpenList
-
-Create a protected token file. The password is entered interactively and is never written to command history:
-
-```bash
-avecove-namer login \
-  --openlist-url "https://openlist.example.com" \
-  --username admin \
-  --token-file "$HOME/.config/avecove-namer/openlist.token"
-```
-
-Check connectivity and generate a read-only plan:
-
-```bash
-avecove-namer check \
-  --backend openlist \
-  --openlist-url "https://openlist.example.com" \
-  --openlist-token-file "$HOME/.config/avecove-namer/openlist.token" \
-  --path "/115/TV/Modern Family (2009)"
-
-avecove-namer plan \
-  --backend openlist \
-  --openlist-url "https://openlist.example.com" \
-  --openlist-token-file "$HOME/.config/avecove-namer/openlist.token" \
-  --path "/115/TV/Modern Family (2009)" \
-  --output work/modern-family.json \
-  --csv work/modern-family.csv
-```
-
-OpenList execution uses the same preview and exact-confirmation flow as the local backend. Token files must have `0600` permissions. Rename requests use a conservative three-second cooldown by default to reduce cloud-provider rate-limit risk, including on 115.
-
-Resolve TMDB metadata and select the title language automatically. Supplying a verified TMDB ID includes the selected work folder in the reviewed plan by default:
-
-```bash
-avecove-namer plan \
-  --backend openlist \
-  --openlist-url "https://openlist.example.com" \
-  --openlist-token-file "$HOME/.config/avecove-namer/openlist.token" \
-  --path "/Baidu/Movies/Kill Bill 1" \
-  --tmdb-id 24 \
-  --tmdb-token-file "$HOME/.config/avecove-namer/tmdb.token" \
-  --media-kind movie \
-  --title-style auto \
-  --output work/kill-bill.json
-```
-
-Use `--no-rename-root-folder` only when the selected folder name must remain unchanged.
-
-### Guided server workflow
-
-After installing `deploy/avecove-namer-run`, one command performs a read-only preview, explicit confirmation, cloud rename, narrow STRM sync, affected Emby library refresh, and final verification. By default it syncs STRM files only and preserves existing image and subtitle sidecars, preventing large sidecar downloads from stalling a small server:
-
-```bash
-avecove-namer-run "/GuangYa/00剧/01美/Game of Thrones (2011)" 1399 tv
-```
-
-The optional final argument selects `auto` (default), `english`, `chinese`, `original`, or `bilingual` title styling. The script changes files only after the operator types uppercase `YES`, and every run keeps a separate rollback journal.
-
-## Naming policy
-
-The default episode pattern is:
-
-```text
-{Series.Title}.{Year}.S{season:02}E{episode:02}.{Technical.Metadata}.{ext}
-```
-
-The subtitle pattern is:
-
-```text
-{Complete.Video.Stem}.{language}.{subtitle-ext}
-```
-
-Bilingual markers such as `chs&eng` and `cht&eng` are preserved. Existing season-folder names are deliberately left unchanged; the selected work folder and files inside it are the normalization targets.
-
-If the series year cannot be inferred from the folder or filename, the item is skipped. A verified title and year can be supplied with `--title` and `--year`. See [Naming rules](docs/naming-rules.md).
-
-## Safety model
-
-Planning is read-only. Execution is refused when the plan has conflicts, the target already exists, the source changed or disappeared, the requested root is broad, or the supplied root/count confirmation differs. Every completed rename is recorded immediately so a partially completed run can be reversed.
-
-Cloud providers may still impose rename limits or temporary API failures. Always begin with one small folder.
-
-## Docker
-
-The image is a run-on-demand CLI rather than a resident service:
-
-```bash
-docker build -t avecove-namer:dev .
-docker run --rm avecove-namer:dev --help
-```
-
-The included [Compose example](compose.example.yml) caps the container at 0.25 CPU and 192 MB of memory.
-
-## Roadmap
-
-- Incremental state and change-only scanning.
-- Targeted Emby refresh after successful operations.
-- Multi-library rules and reusable naming profiles.
-- Optional review UI and scheduled jobs.
-- Broader canary validation across supported cloud providers.
-
-## Development
-
-```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -v
-```
-
-## License
-
-[MIT](LICENSE)
+MIT license. TMDb artwork and metadata belong to their respective owners; this project is not endorsed by TMDb or cloud providers.

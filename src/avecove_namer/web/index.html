@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#edf5fb">
   <meta name="description" content="AveCove 私人媒体工具箱">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23090b10'/%3E%3Cpath d='M18 45 31 16l15 29h-8l-3-7H24l-3 7h-3Zm9-14h5l-2.4-6-2.6 6Z' fill='%23e44b5f'/%3E%3C/svg%3E">
@@ -13,18 +13,18 @@
       document.documentElement.dataset.scene = hour < 5 || hour >= 21 ? 'night' : hour < 11 ? 'morning' : hour < 17 ? 'day' : 'evening';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=guided-15">
+  <link rel="stylesheet" href="styles.css?v=batch-focus-20261029">
 </head>
 <body>
   <div class="shell">
-    <aside class="sidebar">
+    <button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" hidden></button>
+    <aside class="sidebar" id="tool-sidebar">
       <a class="brand" href="#namer" aria-label="AveCove Media Tools 首页">
         <span class="brand-mark">A</span>
         <span><strong>AveCove</strong><small>Media Tools</small></span>
       </a>
       <nav aria-label="工具导航">
         <button class="nav-item active" data-view="namer"><span>✦</span>Namer</button>
-        <button class="nav-item" data-view="emby"><span>↻</span>Emby 刷新</button>
         <button class="nav-item" data-view="tmdb"><span>⌕</span>TMDb 查询</button>
         <button class="nav-item" data-view="detective"><span>◉</span>识别记录</button>
       </nav>
@@ -36,7 +36,7 @@
 
     <main>
       <header class="topbar">
-        <button class="mobile-menu" id="mobile-menu" aria-label="打开导航">☰</button>
+        <button class="mobile-menu" id="mobile-menu" aria-label="打开导航" aria-expanded="false" aria-controls="tool-sidebar">☰</button>
         <div><span class="eyebrow">PRIVATE WORKSPACE</span><h1 id="page-title">Namer</h1></div>
         <a class="home-link" href="/">← 返回聚合页</a>
         <span class="date" id="today"></span>
@@ -44,7 +44,7 @@
 
       <section class="view" id="view-tmdb">
         <div class="section-head">
-          <div><h2>源语言元数据</h2><p>按 TMDb 原始语言读取剧集和全部单集标题、简介。</p></div>
+          <div><h2>TMDb 源数据与图片</h2><p>查询剧集，按季查看源语言单集信息、封面和剧照。</p></div>
           <div class="segmented" role="group" aria-label="媒体类型">
             <button class="active" data-kind="tv">剧集</button><button data-kind="movie">电影</button>
           </div>
@@ -56,27 +56,46 @@
           <button class="primary" type="submit">查询</button>
         </form>
         <div class="notice">输入名称会同时查询 TMDb 和你的网盘；也可以只点“查我的网盘”。</div>
+        <section class="series-shelf saved-shows" aria-label="我的剧集与观看时间线">
+          <div class="result-toolbar"><div><span class="page-kicker">YOUR SERIES</span><h3>我的剧集 <small id="shelf-count"></small></h3></div><button type="button" class="mini-button" id="shelf-reload">↻ 刷新</button></div>
+          <div class="shelf-filters" role="group" aria-label="筛选剧集与观看时间线">
+            <button type="button" class="mini-button" data-shelf-filter="all" aria-pressed="true">全部</button>
+            <button type="button" class="mini-button" data-shelf-filter="watching" aria-pressed="false">在看</button>
+            <button type="button" class="mini-button" data-shelf-filter="favorite" aria-pressed="false">收藏</button>
+            <button type="button" class="mini-button" data-shelf-filter="watched" aria-pressed="false">已观看 · 时间线</button>
+          </div>
+          <div id="series-shelf-list" aria-live="polite">正在读取…</div>
+          <p class="shelf-credit">海报与剧照来自 TMDb · 已观看按完成日期倒序排列，日期可修改；这是你标记的观看记录，不代表剧集已完结。</p>
+        </section>
         <div id="library-search-result" class="availability-card idle"><span>收藏检查</span><strong>输入资源名称，看看是否已经收藏</strong></div>
-        <div id="tmdb-result" class="result-space empty-state"><span class="empty-icon">⌕</span><p>输入名称或 ID 开始查询</p></div>
+        <div id="tmdb-workspace" class="tmdb-workspace">
+          <div id="tmdb-result" class="result-space empty-state"><span class="empty-icon">⌕</span><p>输入名称或 ID 开始查询</p></div>
+          <aside id="tmdb-artwork" class="tmdb-artwork" hidden aria-label="剧集封面与剧照" aria-live="polite"></aside>
+        </div>
       </section>
 
       <section class="view active" id="view-namer">
-        <div class="section-head"><div><span class="page-kicker">LIBRARY INBOX</span><h2>Namer 新资源工作台</h2><p>从入库检测、TMDb 识别到 Emby 刷新，一条流程完成。</p></div><div class="section-actions"><span class="safe-badge">只读检测</span><button class="secondary" id="namer-inbox-reload" type="button">重新检测</button></div></div>
-        <div class="queue-toolbar"><div><strong>批量改名队列</strong><span id="namer-queue-count">尚未选择项目</span></div><div class="section-actions"><button class="secondary" id="namer-add-all" type="button" disabled>一键加入全部</button><button class="primary" id="namer-plan-queue" type="button" disabled>批量生成预览</button></div></div>
-        <div id="namer-inbox" class="inbox-loading-wrap"><div class="inbox-loading-card"><span></span><div><strong>正在检测新资源</strong><small>只读浅层检查，不读取视频</small></div></div></div>
-        <div class="workflow-divider"><span>MANUAL WORKBENCH</span><small>或手动指定目录</small></div>
+        <div class="section-head"><div><span class="page-kicker">NAMER WORKBENCH</span><h2>Namer 改名工作台</h2><p>展开目录、跨盘勾选，再统一预览与确认改名；不再全盘扫描。</p></div><div class="section-actions"><span class="safe-badge">确认后执行</span><button class="secondary" id="namer-directory-reload" type="button">↻ 重新扫描目录</button></div></div>
+        <div class="queue-toolbar batch-priority" aria-label="跨盘批量改名"><div><strong>跨盘批量改名</strong><span id="namer-queue-count" aria-live="polite">尚未选择项目</span></div><div class="section-actions"><button class="secondary" id="namer-clear-queue" type="button" disabled>清空选择</button><button class="primary" id="namer-plan-queue" type="button" disabled>批量生成预览 →</button></div></div>
+        <div id="namer-selected" class="namer-selected" hidden aria-label="已选择的作品"></div>
+        <div class="workflow-divider"><span>SELECT DIRECTORIES</span><small>勾选加入队列 · 点击名称可单独识别 · 每批最多 30 项</small></div>
         <div class="manual-workbench">
           <div class="path-presets grouped-presets namer-presets" id="namer-presets" aria-label="Namer 常用路径"></div>
           <form class="form-card" id="namer-form">
-            <label class="wide"><span>OpenList 媒体路径</span><input id="namer-path" placeholder="/115/00剧/01美/Modern Family" required></label>
-            <label><span>类型</span><select id="namer-kind"><option value="tv">剧集</option><option value="movie">电影</option></select></label>
+            <label class="wide"><span>LitePan 网盘路径</span><input id="namer-path" placeholder="/115/00剧/01美/Modern Family" required></label>
+            <label><span>类型</span><select id="namer-kind"><option value="tv">剧集</option><option value="movie">电影</option><option value="collection">电影合集</option></select></label>
             <label><span>标题方式</span><select id="namer-style"><option value="auto">自动</option><option value="original">原名</option><option value="english">英文</option><option value="chinese">中文</option><option value="bilingual">双语</option></select></label>
-            <details class="advanced-id"><summary>高级</summary><label><span>手动 TMDb ID（可选）</span><input id="namer-id" inputmode="numeric" placeholder="自动识别失败时填写"></label></details>
+            <details class="advanced-id"><summary>高级</summary><label><span>TMDb ID（合集模式填合集编号）</span><input id="namer-id" inputmode="numeric" placeholder="例如合集 155421"></label></details>
             <button class="primary align-end" type="submit">自动识别</button>
-            <label class="check-field source-parent-option"><input id="namer-source-parent" type="checkbox"><span>父目录使用 TMDb 源数据名称（子文件仍使用英文名称）</span></label>
+            <label class="check-field source-parent-option"><input id="namer-source-parent" type="checkbox" checked><span>父目录与子文件统一使用 TMDb 源语言名称（保留原文字形）</span></label>
+            <label class="check-field"><input id="namer-fill-missing" type="checkbox" checked><span>合集：补建缺少影片的“待入库”空目录（需要合集编号，确认后创建）</span></label>
           </form>
         </div>
         <div id="namer-result" class="result-space empty-state"><span class="empty-icon">✦</span><p>输入具体作品路径，先识别再预览</p></div>
+        <details class="namer-utilities" id="namer-utilities"><summary>辅助目录与更新日志 <small>巡影 · LitePan / Vesta</small></summary>
+          <details class="series-shelf" id="scout-workbench"><summary>巡影收录目录</summary><p class="meta">巡影负责收录，Namer 负责预览和确认命名。只读取所点目录，不全盘扫描，不移动巡影根目录。</p><div class="actions" id="scout-roots"></div><div id="scout-directory-items" aria-live="polite"></div></details>
+          <div class="queue-toolbar utility-log"><div><strong>LitePan · Vesta 更新日志</strong><span id="litepan-changes-status" aria-live="polite">展开后读取更新记录</span></div><div class="section-actions"><button type="button" class="secondary" id="litepan-changes-reload">刷新变化</button><button type="button" class="secondary" id="litepan-changes-ack" disabled>本批已处理 / 忽略</button><button type="button" class="secondary" id="litepan-changes-add" disabled>加入本批更新</button></div></div>
+        </details>
       </section>
 
       <section class="view" id="view-detective">
@@ -86,18 +105,32 @@
         <div id="detective-result" class="result-space empty-state"><span class="empty-icon">◉</span><p>正在读取记录</p></div>
       </section>
 
-      <section class="view" id="view-emby">
-        <div class="section-head"><div><h2>Emby 网盘任务中心</h2><p>自动按网盘汇总待入库项目和重复剧集，再串行低负载处理。</p></div><div class="section-actions"><button class="secondary" id="emby-reload-all" type="button">重新检测</button></div></div>
-        <div class="queue-toolbar"><div><strong>刷新集合</strong><span id="emby-queue-count">尚未选择项目</span></div><button class="primary" id="emby-run-queue" type="button" disabled>一键陆续刷新</button></div>
-        <div id="emby-pending" class="result-space empty-state"><span class="empty-icon">◎</span><p>正在按网盘收集待刷新的项目</p></div>
-        <div id="emby-residuals" class="result-space empty-state"><span class="empty-icon">◌</span><p>正在检查 Emby 数据库残留</p></div>
-        <div id="emby-duplicates" class="result-space empty-state"><span class="empty-icon">≋</span><p>正在按网盘汇总重复剧集</p></div>
-        <div class="notice">刷新集合严格串行，一次只处理一个作品；重复 STRM 先确认，再移入可恢复隔离区。</div>
-        <div id="emby-result" class="result-space empty-state"><span class="empty-icon">↻</span><p>等待执行任务</p></div>
-      </section>
     </main>
   </div>
+  <dialog id="episode-dialog" class="episode-dialog" aria-labelledby="episode-heading">
+    <div class="result-toolbar"><h2 id="episode-heading">🎬 查询单集</h2><button class="mini-button" id="episode-close" type="button" aria-label="关闭单集查询">✕ 关闭</button></div>
+    <p id="episode-series" class="meta"></p>
+    <form id="episode-form" class="episode-form">
+      <div class="episode-number-fields">
+        <label><span>季号</span><div class="episode-number-input"><b aria-hidden="true">S</b><input id="episode-season" inputmode="numeric" pattern="[0-9]{1,3}" maxlength="3" placeholder="01" autocomplete="off" required aria-label="季号，只填数字" aria-describedby="episode-hint"></div></label>
+        <label><span>集号</span><div class="episode-number-input"><b aria-hidden="true">E</b><input id="episode-number" inputmode="numeric" pattern="[0-9]{1,4}" maxlength="4" placeholder="02" autocomplete="off" required aria-label="集号，只填数字" aria-describedby="episode-hint"></div></label>
+      </div>
+      <button class="primary" id="episode-submit" type="submit">读取单集</button>
+    </form>
+    <p id="episode-hint" class="meta">只需填写数字，例如季号 1、集号 2；特别篇的季号填 0。</p>
+    <div id="episode-result" aria-live="polite"></div>
+  </dialog>
+  <dialog id="watched-dialog" class="episode-dialog watched-dialog" aria-labelledby="watched-heading">
+    <h2 id="watched-heading">📅 观看日期</h2>
+    <p id="watched-series" class="meta"></p>
+    <form id="watched-form">
+      <label><span>哪天看完这部剧？</span><input id="watched-date" type="date" min="1900-01-01" required></label>
+      <p class="meta">按你的完成日期收入时间线；之后重新设为“在看”，仍保留这条观看记录。</p>
+      <p id="watched-feedback" role="status" aria-live="polite"></p>
+      <div class="watched-dialog-actions"><button class="secondary" id="watched-cancel" type="button">取消</button><button class="primary" id="watched-save" type="submit">✓ 保存观看日期</button></div>
+    </form>
+  </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=guided-18" defer></script>
+  <script src="app.js?v=batch-focus-20261029" defer></script>
 </body>
 </html>

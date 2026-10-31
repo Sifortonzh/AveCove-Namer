@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable
 
 from .backends import BackendError, StorageBackend
@@ -58,6 +58,22 @@ def execute_plan(
         raise ExecutionError("Journal already contains an earlier run; use a new journal path")
     journal_file.parent.mkdir(parents=True, exist_ok=True)
     for operation in plan.operations:
+        if operation.kind == "create_directory":
+            if PurePosixPath(operation.target).parent != PurePosixPath(plan.root):
+                raise ExecutionError("Placeholder directory must be inside the collection root")
+            if backend.exists(operation.target):
+                raise ExecutionError(f"Placeholder target appeared after planning: {operation.target}")
+            try:
+                backend.mkdir(operation.target)
+            except BackendError as exc:
+                raise ExecutionError(str(exc)) from exc
+            row = {"timestamp": _now(), "source": operation.source, "target": operation.target, "kind": operation.kind}
+            journal.append(row)
+            with journal_file.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+            if on_progress:
+                on_progress(len(journal), operation)
+            continue
         source_exists = backend.exists(operation.source)
         target_exists = backend.exists(operation.target)
         if not source_exists and target_exists:
@@ -103,6 +119,8 @@ def rollback(
 ) -> list[RenameOperation]:
     with open(journal_path, encoding="utf-8") as handle:
         rows = [json.loads(line) for line in handle if line.strip()]
+    # Created placeholders are retained: they may now contain user uploads.
+    rows = [row for row in rows if row.get("kind") != "create_directory"]
     operations = [
         RenameOperation(
             source=row["target"],

@@ -4,7 +4,12 @@ import json
 import os
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+import base64
+import http.cookiejar
+import threading
+import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
@@ -18,6 +23,9 @@ class BackendError(RuntimeError):
 
 class StorageBackend(ABC):
     name: str
+
+    def mkdir(self, path: str) -> None:
+        raise BackendError("This backend does not support creating directories")
 
     @abstractmethod
     def scan(self, root: str) -> list[Entry]:
@@ -34,6 +42,9 @@ class StorageBackend(ABC):
 
 class LocalBackend(StorageBackend):
     name = "local"
+
+    def mkdir(self, path: str) -> None:
+        Path(path).mkdir()
 
     def scan(self, root: str) -> list[Entry]:
         root_path = Path(root).expanduser().resolve()
@@ -67,6 +78,235 @@ class LocalBackend(StorageBackend):
             raise BackendError(f"Target already exists: {target}")
         target_path.parent.mkdir(parents=True, exist_ok=True)
         source_path.rename(target_path)
+
+
+class LitePanWebDAVBackend(StorageBackend):
+    """Use LitePan's authenticated WebDAV for cloud listing and safe MOVE renames."""
+
+    name = "litepan"
+    # Account-wide pacing survives separate plan/backend instances.
+    _rate_states = {}
+    _rate_lock = threading.RLock()
+    initial_ms = {'115': 500, '123': 0, 'GuangYa': 0, 'Baidu': 0, 'Quark': 0}
+    floor_ms = {'115': 300, '123': 0, 'GuangYa': 0, 'Baidu': 0, 'Quark': 0}
+
+    def __init__(self, base_url: str, username: str, password: str, roots: dict[str, str], timeout: float = 25.0, rename_interval: float = 1.0):
+        self.base_url = base_url.rstrip("/")
+        self.username = username
+        self.password = password
+        self.roots = roots
+        self.timeout = timeout
+        self.rename_interval = rename_interval
+        self._last_rename_at = 0.0
+        self._api_opener = None
+        self.rate_file = Path(os.getenv('AVECOVE_LITEPAN_RENAME_RATES', '/opt/docker/avecove-namer/rename-rates.json'))
+        if not self.base_url.startswith(("http://", "https://")) or not username or not password:
+            raise BackendError("LitePan WebDAV URL or credentials are missing")
+
+    def _physical_parts(self, virtual_path: str) -> list[str]:
+        parts = PurePosixPath(virtual_path).parts
+        if len(parts) < 2 or parts[0] != "/" or parts[1] not in self.roots:
+            raise BackendError(f"Unsupported LitePan cloud path: {virtual_path}")
+        if '..' in parts:
+            raise BackendError('Invalid cloud path')
+        if len(parts) > 2 and parts[2] == '@scout':
+            config = Path(os.getenv('AVECOVE_SCOUT_ROOTS_FILE', '/opt/docker/avecove-namer/scout-roots.json'))
+            mappings = json.loads(config.read_text()) if config.is_file() else {}
+            root = mappings.get(parts[1])
+            # Per-category acquisition roots coexist with the older shared root.
+            if isinstance(root, dict):
+                root = root.get(parts[3]) if len(parts) > 3 else None
+                remainder = parts[4:]
+            else:
+                remainder = parts[3:]
+            if not root or not str(root).startswith('/') or '..' in PurePosixPath(root).parts:
+                raise BackendError('巡影目录尚未配置')
+            return [*PurePosixPath(root).parts[1:], *remainder]
+        return [*PurePosixPath(self.roots[parts[1]]).parts[1:], *parts[2:]]
+
+    def _url(self, virtual_path: str) -> str:
+        physical = self._physical_parts(virtual_path)
+        parts = PurePosixPath(virtual_path).parts
+        actual = [parts[1], *physical]
+        return self.base_url + "/dav/" + "/".join(urllib.parse.quote(p, safe="") for p in actual)
+
+    def _request(self, virtual_path: str, method: str, headers: dict[str, str] | None = None) -> bytes:
+        token = base64.b64encode(f"{self.username}:{self.password}".encode()).decode()
+        request = urllib.request.Request(self._url(virtual_path), method=method, headers={
+            "Authorization": "Basic " + token,
+            "User-Agent": "AveCove-Namer-LitePan/1.0",
+            **(headers or {}),
+        })
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                return response.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                raise FileNotFoundError(virtual_path) from exc
+            message = exc.read(300).decode("utf-8", "replace").strip()
+            raise BackendError(f"LitePan WebDAV HTTP {exc.code}: {message}") from exc
+        except (TimeoutError, urllib.error.URLError) as exc:
+            raise BackendError(f"LitePan WebDAV unavailable: {exc}") from exc
+
+    def _api_list(self, path: str, refresh: bool = False) -> list[dict[str, object]]:
+        account_ids = {"115": 1, "123": 2, "GuangYa": 3, "Baidu": 4, "Quark": 5}
+        parts = PurePosixPath(path).parts
+        provider = parts[1] if len(parts) > 1 else ""
+        if provider not in account_ids:
+            raise BackendError(f"Unsupported LitePan cloud path: {path}")
+        if self._api_opener is None:
+            opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+            form = urllib.parse.urlencode({"username": self.username, "password": self.password}).encode()
+            request = urllib.request.Request(self.base_url + "/api/auth/login", form)
+            try:
+                with opener.open(request, timeout=self.timeout) as response:
+                    login = json.load(response)
+            except (OSError, ValueError) as exc:
+                raise BackendError(f"LitePan login unavailable: {exc}") from exc
+            if not login.get("success"):
+                raise BackendError("LitePan login rejected")
+            self._api_opener = opener
+
+        def list_parent(parent: str) -> list[dict[str, object]]:
+            query = urllib.parse.urlencode({"account_id": account_ids[provider], "parent_id": parent,
+                                             "force_refresh": str(refresh).lower()})
+            request = urllib.request.Request(self.base_url + "/api/files/list?" + query)
+            try:
+                with self._api_opener.open(request, timeout=self.timeout) as response:
+                    payload = json.load(response)
+            except (OSError, ValueError) as exc:
+                raise BackendError(f"LitePan listing unavailable for {path}: {exc}") from exc
+            if not payload.get("success"):
+                raise BackendError(f"LitePan listing failed for {path}: {payload.get('message', '')}")
+            return (payload.get("data") or {}).get("items") or []
+
+        actual_parts = self._physical_parts(path)
+        parent = "0"
+        for segment in actual_parts:
+            items = list_parent(parent)
+            match = next((item for item in items if item.get("name") == segment and item.get("is_dir")), None)
+            if match is None:
+                raise BackendError(f"LitePan directory not found: {path}")
+            parent = str(match["id"])
+        return [{"name": item.get("name", ""), "is_dir": bool(item.get("is_dir")),
+                 "file_id": str(item.get("id") or ""), "account_id": str(account_ids[provider]),
+                 "size": item.get("size"), "modified": item.get("mod_time", "")}
+                for item in list_parent(parent)]
+
+    def _list(self, path: str, refresh: bool = False) -> list[dict[str, object]]:
+        try:
+            return self._api_list(path, refresh)
+        except BackendError:
+            pass
+        for attempt in range(3):
+            try:
+                body = self._request(path, "PROPFIND", {"Depth": "1", "Cache-Control": "no-cache" if refresh else "max-age=0"})
+                document = ET.fromstring(body)
+                break
+            except FileNotFoundError as exc:
+                raise BackendError(f"LitePan directory not found: {path}") from exc
+            except (BackendError, ET.ParseError) as exc:
+                if attempt == 2:
+                    raise BackendError(f"LitePan WebDAV listing unavailable for {path}: {exc}") from exc
+                time.sleep(0.5 * (attempt + 1))
+        items: list[dict[str, object]] = []
+        requested = self._url(path).rstrip("/")
+        for response in document.findall("{DAV:}response"):
+            href = response.findtext("{DAV:}href") or ""
+            if urllib.parse.unquote(urllib.parse.urlsplit(href).path).rstrip("/") == urllib.parse.unquote(urllib.parse.urlsplit(requested).path).rstrip("/"):
+                continue
+            name = urllib.parse.unquote(urllib.parse.urlsplit(href).path.rstrip("/").rsplit("/", 1)[-1])
+            prop = response.find(".//{DAV:}prop")
+            if not name or prop is None:
+                continue
+            is_dir = prop.find("{DAV:}resourcetype/{DAV:}collection") is not None
+            raw_size = prop.findtext("{DAV:}getcontentlength")
+            items.append({"name": name, "is_dir": is_dir, "size": int(raw_size) if raw_size and raw_size.isdecimal() else None,
+                          "modified": prop.findtext("{DAV:}getlastmodified") or ""})
+        return items
+
+    def list_directories(self, root: str, refresh: bool = False) -> list[dict[str, object]]:
+        return sorted((item for item in self._list(root, refresh) if item["is_dir"]),
+                      key=lambda item: (str(item["modified"]), str(item["name"]).casefold()), reverse=True)
+
+    def scan(self, root: str, refresh: bool = False) -> list[Entry]:
+        pending = [(root, refresh)]
+        entries: list[Entry] = []
+        while pending:
+            current, fresh = pending.pop()
+            for item in self._list(current, fresh):
+                path = str(PurePosixPath(current) / str(item["name"]))
+                if item["is_dir"]:
+                    pending.append((path, False))
+                else:
+                    entries.append(Entry(path=path, size=item["size"], modified=str(item["modified"]) or None,
+                                         file_id=item.get('file_id'), account_id=item.get('account_id')))
+        return sorted(entries, key=lambda entry: entry.path.casefold())
+
+    def exists(self, path: str) -> bool:
+        return any(item["name"] == PurePosixPath(path).name for item in self._list(str(PurePosixPath(path).parent)))
+
+    def mkdir(self, path: str) -> None:
+        self._request(path, "MKCOL", {})
+
+    def rename(self, source: str, target: str) -> None:
+        provider = PurePosixPath(source).parts[1]
+        if provider != PurePosixPath(target).parts[1]:
+            raise BackendError("LitePan cannot move files across cloud accounts")
+        key = (str(self.rate_file), provider)
+        with self._rate_lock:
+            if key not in self._rate_states:
+                interval = self.initial_ms.get(provider, 1000)
+                try:
+                    saved = json.loads(self.rate_file.read_text()).get(provider, {})
+                    value = saved.get('interval_ms', interval)
+                    if isinstance(value, (int, float)) and self.floor_ms.get(provider, 1000) <= value <= 10000:
+                        interval = int(value)
+                except (OSError, ValueError, AttributeError):
+                    pass
+                self._rate_states[key] = {'interval_ms': interval, 'successes': 0, 'last': 0.0, 'lock': threading.Lock()}
+            state = self._rate_states[key]
+        with state['lock']:
+            wait = state['interval_ms'] / 1000 - (time.monotonic() - state['last'])
+            if wait > 0:
+                time.sleep(wait)
+            try:
+                self._request(source, "MOVE", {"Destination": self._url(target), "Overwrite": "F"})
+            except BackendError as exc:
+                # A timed-out MOVE may already have succeeded: never blindly retry.
+                if any(word in str(exc) for word in ('HTTP 429', 'HTTP 403', 'HTTP 408', 'HTTP 500', 'HTTP 502', 'HTTP 503', 'HTTP 504', 'unavailable')):
+                    state['interval_ms'] = min(10000, max(1000, state['interval_ms'] * 2))
+                    state['successes'] = 0
+                    self._save_rate(provider, state)
+                raise
+            else:
+                state['successes'] += 1
+                if state['successes'] >= 50:
+                    state['interval_ms'] = max(self.floor_ms.get(provider, 1000), state['interval_ms'] - 50)
+                    state['successes'] = 0
+                self._save_rate(provider, state)
+            finally:
+                state['last'] = time.monotonic()
+                self._last_rename_at = state['last']
+
+    def _save_rate(self, provider, state):
+        with self._rate_lock:
+            try:
+                try:
+                    data = json.loads(self.rate_file.read_text())
+                except (OSError, ValueError):
+                    data = {}
+                if not isinstance(data, dict):
+                    data = {}
+                data[provider] = {'interval_ms': state['interval_ms'], 'successes': state['successes']}
+                self.rate_file.parent.mkdir(parents=True, exist_ok=True)
+                temporary = self.rate_file.with_suffix('.tmp')
+                temporary.write_text(json.dumps(data), encoding='utf-8')
+                temporary.chmod(0o600)
+                temporary.replace(self.rate_file)
+            except OSError:
+                # Persistence failure must not turn a successful cloud rename into a retry.
+                pass
 
 
 class OpenListBackend(StorageBackend):

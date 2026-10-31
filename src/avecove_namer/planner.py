@@ -31,8 +31,10 @@ def sibling_path(source: str, target_name: str) -> str:
     return str(PurePosixPath(source).parent / target_name)
 
 
-PARENT_SEASON_RE = re.compile(r"(?i)(?:^|[^a-z0-9])(?:season|s)[ ._-]*0*(\d{1,2})(?![a-z0-9])")
+PARENT_SEASON_RE = re.compile(r"(?i)(?:^|[^a-z0-9])(?:season|s)[ ._-]*0*(\d{1,4})(?![a-z0-9])")
 PARENT_CHINESE_SEASON_RE = re.compile(r"第[ ._-]*([一二三四五六七八九十\d]{1,3})[ ._-]*季")
+SEASON_DETAIL_RE = re.compile(r"(?i)^season[ ._-]*0*\d{1,4}\s*[-—–]\s*(.+?)\s*$")
+TECHNICAL_DETAIL_RE = re.compile(r"(?i)(?:\b(?:HDR|DV|WEB|BluRay|REMUX|HEVC|H\.?26[45]|DDP|AAC)\b|\b(?:720|1080|2160)p\b|\b4k\b|杜比|字幕|内封|\b全\d+集\b)")
 CHINESE_DIGITS = {char: number for number, char in enumerate("一二三四五六七八九", 1)}
 
 
@@ -55,6 +57,18 @@ def _season_from_folder(name: str) -> int | None:
     else:
         number = CHINESE_DIGITS.get(token, 0)
     return number if 0 < number < 100 else None
+
+
+def normalized_season_folder_name(name: str, width: int = 2) -> str | None:
+    """Normalize a season number without discarding a descriptive season title."""
+    number = _season_from_folder(name)
+    if number is None:
+        return None
+    detail_match = SEASON_DETAIL_RE.match(name.strip())
+    detail = detail_match.group(1).strip() if detail_match else ""
+    if detail and not TECHNICAL_DETAIL_RE.search(detail):
+        return f"Season {number:0{width}d} - {detail}"
+    return f"Season {number:0{width}d}"
 
 
 def _parent_season(path: str) -> int | None:
@@ -261,9 +275,17 @@ def make_plan(
                 if _season_from_folder(parent.name):
                     season_directories.add(parent)
                 parent = parent.parent
+        season_widths: dict[PurePosixPath, int] = {}
+        for source_dir in season_directories:
+            season_widths[source_dir.parent] = max(
+                season_widths.get(source_dir.parent, 2),
+                3 if (_season_from_folder(source_dir.name) or 0) >= 100 else 2,
+            )
         for source_dir in sorted(season_directories, key=lambda path: str(path).casefold()):
-            season = _season_from_folder(source_dir.name)
-            target_dir = source_dir.with_name(f"Season {season:02d}")
+            target_name = normalized_season_folder_name(source_dir.name, season_widths[source_dir.parent])
+            if target_name is None:
+                continue
+            target_dir = source_dir.with_name(target_name)
             if target_dir != source_dir:
                 plan.operations.append(
                     RenameOperation(

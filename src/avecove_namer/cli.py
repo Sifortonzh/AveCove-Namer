@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .backends import BackendError, LocalBackend, OpenListBackend, StorageBackend, login_openlist
+from .backends import BackendError, LitePanWebDAVBackend, LocalBackend, OpenListBackend, StorageBackend, login_openlist
 from .detective import parse_watch, run_detective, write_json_atomic
 from .executor import ExecutionError, execute_plan, preview, rollback
 from .naming import NamingPolicy
@@ -43,6 +43,12 @@ def backend_from_args(args: argparse.Namespace, expected: str | None = None) -> 
         raise ValueError(f"Plan backend is {expected}, not {selected}")
     if selected == "local":
         return LocalBackend()
+    if selected == "litepan":
+        url = args.litepan_url or os.environ.get("AVECOVE_LITEPAN_URL", "http://127.0.0.1:5211")
+        username = args.litepan_username or os.environ.get("AVECOVE_LITEPAN_USERNAME", "zhongyunxing")
+        password_file = args.litepan_password_file or os.environ.get("AVECOVE_LITEPAN_PASSWORD_FILE", "/opt/docker/avecove-namer/secrets/litepan.password")
+        roots_file = args.litepan_roots_file or os.environ.get("AVECOVE_LITEPAN_ROOTS_FILE", "/opt/docker/avecove-namer/secrets/litepan-roots.json")
+        return LitePanWebDAVBackend(url, username, secure_read(password_file), json.loads(Path(roots_file).read_text(encoding="utf-8")))
     if selected == "openlist":
         url = args.openlist_url or os.environ.get("OPENLIST_URL")
         token_file = args.openlist_token_file or os.environ.get("OPENLIST_TOKEN_FILE")
@@ -53,9 +59,13 @@ def backend_from_args(args: argparse.Namespace, expected: str | None = None) -> 
 
 
 def add_backend_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--backend", choices=("local", "openlist"), required=True)
+    parser.add_argument("--backend", choices=("local", "openlist", "litepan"), required=True)
     parser.add_argument("--openlist-url")
     parser.add_argument("--openlist-token-file")
+    parser.add_argument("--litepan-url")
+    parser.add_argument("--litepan-username")
+    parser.add_argument("--litepan-password-file")
+    parser.add_argument("--litepan-roots-file")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -126,8 +136,12 @@ def build_parser() -> argparse.ArgumentParser:
     tmdb.add_argument("--language", default="en-US")
 
     detective = subcommands.add_parser("detect", help="Detect changed OpenList works and safely run Namer")
-    detective.add_argument("--openlist-url", required=True)
-    detective.add_argument("--openlist-token-file", required=True)
+    detective.add_argument("--openlist-url")
+    detective.add_argument("--openlist-token-file")
+    detective.add_argument("--litepan-url")
+    detective.add_argument("--litepan-username")
+    detective.add_argument("--litepan-password-file")
+    detective.add_argument("--litepan-roots-file")
     detective.add_argument("--tmdb-token-file", required=True)
     detective.add_argument("--watch", action="append", required=True, help="Repeat tv:/path or movie:/path")
     detective.add_argument("--state", required=True)
@@ -161,7 +175,13 @@ def run(args: argparse.Namespace) -> int:
     if args.command == "detect":
         if args.max_operations < 1:
             raise ValueError("--max-operations must be positive")
-        backend = OpenListBackend(args.openlist_url, secure_read(args.openlist_token_file))
+        if os.environ.get("AVECOVE_NAMER_BACKEND") == "litepan":
+            args.backend = "litepan"
+            backend = backend_from_args(args)
+        else:
+            if not args.openlist_url or not args.openlist_token_file:
+                raise ValueError("OpenList detective requires URL and token file")
+            backend = OpenListBackend(args.openlist_url, secure_read(args.openlist_token_file))
         summary = run_detective(
             backend,
             TMDBClient(secure_read(args.tmdb_token_file)),
