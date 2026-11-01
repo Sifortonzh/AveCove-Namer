@@ -49,6 +49,9 @@ class ArtworkTests(unittest.TestCase):
         self.assertEqual(calls, [('/tv/42/images', {})])
         self.assertIsNone(result['season'])
         self.assertEqual(result['posters'][0]['file_path'], '/series.jpg')
+        self.assertEqual(result['season_count'], 1)
+        self.assertTrue(result['has_specials'])
+        self.assertEqual(result['episode_count'], 2)
 
     def test_selected_season_combines_source_and_true_episode_images(self):
         client, calls = self.make_client()

@@ -1,5 +1,14 @@
 # Namer 2026-11-01 update
 
+## Current delivery: 0.7.2 TV facts
+
+- Scope: season count/per-season episodes, genres, TMDb series type and regional content ratings. Shared by search summaries, artwork/source views and saved-series cards.
+- Lightweight `POST /api/tmdb/summary` fetches TV details + appended ratings once; no cloud/image/episode traversal. First search match auto-loads, other matches load on expansion.
+- Specials S00 separate from regular-season totals; unknown counts/classifications are explicit. Existing shelf metadata upgrades in the background without resetting flags/progress.
+- Verified locally: 175 Python tests and JS UI contracts. Publish using existing ali-m2 SSH publisher; active jobs block deployment, and public revision must match HEAD. Deployment status must be checked live, not inferred from this file.
+
+## Prior delivery / cleanup history
+
 - Current scope: 0.7.1 names the app AveCove Namer and removes Scout integration. User explicitly approved deleting the nonempty 115 Media Scout folder, including its one work.
 - Implemented: local-only stdin notification CLI, durable SQLite inbox outside releases, version-aware duplicate/stale-ack protection, UI review/add-to-batch/dismiss, new SVG mark.
 - Explicitly NOT enabled: external skill/Hermes installation, public write webhook, cloud scans for tests, automatic rename/delete.

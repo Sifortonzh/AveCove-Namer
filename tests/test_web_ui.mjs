@@ -10,6 +10,7 @@ class Element {
   querySelectorAll() { return []; }
   querySelector() { return new Element(); }
   replaceChildren() { this.innerHTML = ''; }
+  insertAdjacentHTML(position, html) { this.innerHTML += html; }
   showModal() { this.open = true; }
   close() { this.open = false; this.listeners.close?.(); }
   focus() { this.focused = true; }
@@ -26,6 +27,7 @@ const calls = [];
 let episodeResponse = async () => ({code:'S01E02', name:'The Kingsroad', translated_name:'国王大道', overview:'中文简介', original_language:'en', detail_url:'https://www.themoviedb.org/tv/1399/season/1/episode/2'});
 const artworkData = {tmdb_id:1399,title:'权力的游戏',original_name:'Game of Thrones',original_language:'en',year:'2011',recommended_name:'Game of Thrones (2011)',overview:'简介',season:null,seasons:[{number:1,episode_count:10}],episodes:[],warnings:[],posters:[],backdrops:[],stills:[],detail_url:'https://www.themoviedb.org/tv/1399'};
 let artworkResponse = async () => ({data:artworkData});
+const summaryData = {seasons:[{number:0,name:'特别篇',episode_count:3},{number:1,name:'第一季',episode_count:10},{number:2,name:'第二季',episode_count:8}],season_count:2,episode_count:18,has_specials:true,genres:['剧情','悬疑'],series_type:'Scripted',content_ratings:[{country:'US',rating:'TV-MA'}]};
 const context = vm.createContext({
   document: {querySelector:element, querySelectorAll:() => [], createElement:()=>new Element(), documentElement:{dataset:{}}},
   location: {pathname:'/media-tools/', hash:'#emby'},
@@ -33,7 +35,7 @@ const context = vm.createContext({
   setTimeout:() => 1, clearTimeout() {}, setInterval() {}, console,
   fetch:async (url, options) => {
     calls.push({url, options});
-    const data = url.endsWith('/api/tmdb/episode') ? await episodeResponse() : url.endsWith('/api/tmdb/artwork') ? await artworkResponse() : {status:'ok'};
+    const data = url.endsWith('/api/tmdb/summary') ? summaryData : url.endsWith('/api/tmdb/episode') ? await episodeResponse() : url.endsWith('/api/tmdb/artwork') ? await artworkResponse() : {status:'ok'};
     return {ok:true, json:async () => data};
   },
 });
@@ -122,3 +124,15 @@ assert.equal(calls.length, notifyStart, 'Adding notification to queue performs n
 assert.equal(vm.runInContext('namerQueue.has("/123/00影/01国/Example")', context), true);
 assert.match(fs.readFileSync(new URL('../src/avecove_namer/web/index.html', import.meta.url), 'utf8'), /namer-mark\.svg\?v=0\.7\.0/);
 console.log('UI contracts passed: startup, TV/movie, dialogs, artwork, validation and notification-to-queue without cloud mutation');
+const facts=vm.runInContext(`seriesInfoMarkup(${JSON.stringify(summaryData)})`,context);
+assert.match(facts,/2 季/); assert.match(facts,/Season 01/); assert.match(facts,/10 集/); assert.match(facts,/8 集/);
+assert.match(facts,/特别篇 S00/); assert.match(facts,/剧情 · 悬疑/); assert.match(facts,/US · TV-MA/);
+const emptyFacts=vm.runInContext('seriesInfoMarkup({})',context);
+assert.match(emptyFacts,/季数暂无资料/); assert.match(emptyFacts,/不代表全年龄/);
+const countBeforeSummary=calls.length;
+await vm.runInContext('loadSeriesSummary("1399", document.querySelector("#test-summary"))',context);
+await vm.runInContext('loadSeriesSummary("1399", document.querySelector("#test-summary"))',context);
+assert.equal(calls.length-countBeforeSummary,1,'Summary uses one shared request, not image/episode traversal');
+assert.match(element('#test-summary').innerHTML,/TV-MA/);
+assert.equal(element('#test-summary').getAttribute('aria-busy'),'false');
+console.log('Series facts UI: season distribution, regional classifications, missing data and lightweight shared request passed.');

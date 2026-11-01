@@ -70,8 +70,10 @@ function renderShelf(items) {
     poster.onclick = () => openEpisodeDialog(item.id, name);
     const content = document.createElement('div'); content.className = 'shelf-info';
     const title = document.createElement('button'); title.className = 'shelf-title'; title.type = 'button'; title.textContent = name; title.title = name; title.onclick = () => openEpisodeDialog(item.id, name);
-    const translated = document.createElement('p'); translated.className = 'shelf-subtitle'; translated.textContent = item.translatedTitle && item.translatedTitle !== name ? item.translatedTitle : (item.genres || []).join(' · ');
-    const meta = document.createElement('p'); meta.className = 'shelf-meta'; meta.textContent = [item.year, item.rating > 0 ? `TMDb ${Number(item.rating).toFixed(1)}` : '', item.certification].filter(Boolean).join(' · ') || '正在补充影视信息';
+    const translated = document.createElement('p'); translated.className = 'shelf-subtitle'; translated.textContent = item.translatedTitle && item.translatedTitle !== name ? item.translatedTitle : ''; translated.hidden = !translated.textContent;
+    const meta = document.createElement('p'); meta.className = 'shelf-meta'; meta.textContent = [item.year, item.rating > 0 ? `TMDb ${Number(item.rating).toFixed(1)}` : '', item.certification ? `${item.certificationCountry || '地区未标注'} · ${item.certification}` : '暂无内容分级'].filter(Boolean).join(' · ');
+    const genre = document.createElement('p'); genre.className = 'shelf-genre'; genre.textContent = `类型：${(item.genres || []).join(' · ') || 'TMDb 暂未提供'}${item.series_type ? ` · ${item.series_type}` : ''}`;
+    const counts = document.createElement('p'); counts.className = 'shelf-genre'; counts.textContent = `${Number.isInteger(item.season_count) ? `${item.season_count} 季` : '季数待补充'}${Number.isInteger(item.episode_count) ? ` · 正式集 ${item.episode_count} 集` : ''}${item.has_specials ? ' · 另含特别篇' : ''}`;
     const progress = document.createElement('p'); progress.className = 'shelf-progress'; progress.textContent = `${item.watched ? '已观看' + (item.watching ? ' · 重看中' : '') : item.watching ? '在看' : '已收藏'}${item.season !== undefined ? ` · 上次查询 S${String(item.season).padStart(2,'0')}E${String(item.episode).padStart(2,'0')}` : ' · 点封面查询单集'}`;
     const actions = document.createElement('div'); actions.className = 'shelf-quick-actions';
     const quick = shelfActions(item.id, name);
@@ -80,7 +82,7 @@ function renderShelf(items) {
     const watched = quick.querySelector('[data-shelf-action="watched"]'); watched.textContent = item.watched ? '✓ 已看' : '标记已看';
     quick.removeChild(favorite); actions.append(quick);
     const source = document.createElement('button'); source.type = 'button'; source.className = 'mini-button'; source.textContent = '源数据'; source.onclick = () => loadSource(item.id); actions.append(source);
-    content.append(title, translated, meta, progress);
+    content.append(title, translated, meta, genre, counts, progress);
     if (item.watched) {
       const date = document.createElement('button'); date.type = 'button'; date.className = 'shelf-watched-date';
       date.textContent = `📅 ${item.watchedDate || '补充日期'} · 修改`; date.setAttribute('aria-label',`修改 ${name} 的观看日期`);
@@ -249,6 +251,31 @@ async function checkLibrary(query) {
   }
 }
 
+function seriesInfoMarkup(data) {
+  const seasons = data.seasons || [], ratings = data.content_ratings || [];
+  const count = Number.isInteger(data.season_count) ? `${data.season_count} 季` : '季数暂无资料';
+  const episodes = Number.isInteger(data.episode_count) ? ` · 正式集 ${data.episode_count} 集` : '';
+  const types = [...(data.genres || []), ...(data.series_type ? [data.series_type] : [])];
+  const ratingBadge = row => `<span class="content-rating">${escapeHtml(row.country)} · ${escapeHtml(row.rating)}</span>`;
+  return `<section class="series-facts" aria-label="剧集季集、类型与内容分级"><div class="series-facts-heading"><strong>${count}${episodes}</strong>${data.has_specials ? '<small>特别篇单列，不计入季数</small>' : ''}</div><dl class="series-facts-meta"><div><dt>类型</dt><dd>${types.length ? types.map(escapeHtml).join(' · ') : 'TMDb 暂未提供'}</dd></div><div><dt>内容分级</dt><dd>${ratings.length ? ratings.slice(0,3).map(ratingBadge).join(' ') + (ratings.length > 3 ? `<details class="other-content-ratings"><summary>其他地区（${ratings.length-3}）</summary>${ratings.slice(3).map(ratingBadge).join(' ')}</details>` : '') : 'TMDb 暂未提供（不代表全年龄）'}</dd></div></dl><p class="meta series-rating-note">分级按地区展示，与 TMDb 评分无关；季集数以当前 TMDb 数据为准。</p>${seasons.length ? `<details class="series-season-list" open><summary>每季集数 · ${seasons.length} 项</summary><div class="series-season-grid">${seasons.map(row => `<div class="series-season-item"><strong>${row.number === 0 ? '特别篇 S00' : `Season ${String(row.number).padStart(2,'0')}`}</strong><span>${Number.isInteger(row.episode_count) ? `${row.episode_count} 集` : '集数暂无资料'}</span>${row.name ? `<small>${escapeHtml(row.name)}</small>` : ''}</div>`).join('')}</div></details>` : '<p class="meta">TMDb 暂无分季清单。</p>'}</section>`;
+}
+
+const summaryRequests = new Map();
+async function loadSeriesSummary(id, host) {
+  host.textContent = '正在读取季集、类型与内容分级…';
+  host.setAttribute('aria-busy', 'true');
+  try {
+    if (!summaryRequests.has(id)) summaryRequests.set(id, api('/api/tmdb/summary', {tmdb_id:id}));
+    const data = await summaryRequests.get(id);
+    host.innerHTML = seriesInfoMarkup(data);
+  } catch (error) {
+    summaryRequests.delete(id); host.replaceChildren();
+    const message = document.createElement('p'); message.className = 'meta'; message.textContent = error.message;
+    const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'mini-button'; retry.textContent = '↻ 重试剧集资料'; retry.onclick = () => loadSeriesSummary(id, host);
+    host.append(message, retry);
+  } finally { host.setAttribute('aria-busy', 'false'); }
+}
+
 function renderSearch(results, kind) {
   hideArtwork();
   const target = $('#tmdb-result');
@@ -258,6 +285,15 @@ function renderSearch(results, kind) {
     <div><h3>${escapeHtml(item.original_title || item.title || '未命名')}</h3><p>${item.kind === 'movie' ? '电影' : '剧集'} · 源片名${item.title && item.title !== item.original_title ? ` · 译名：${escapeHtml(item.title)}` : ''}${item.year ? ` · ${item.year}` : ''} · ${escapeHtml(item.language || '未知语言')} · <span class="id-tag">TMDb ${item.id}</span></p>${item.recommended_name ? `<div class="copy-name"><code>${escapeHtml(item.recommended_name)}</code></div>` : ''}</div>
     <div class="actions"><button class="mini-button copy-title-button" data-title="${escapeHtml(item.original_title || item.title || '')}">复制源片名</button><button class="mini-button copy-folder-button" data-name="${escapeHtml(item.recommended_name || '')}">复制源语言目录名</button><button class="mini-button copy-id-button" data-id="${item.id}">复制 TMDb 号</button>${(item.kind || kind) === 'tv' ? `<button class="mini-button episode-button" data-id="${item.id}" data-title="${escapeHtml(item.title || item.original_title || '')}">🎬 查询单集</button><button class="mini-button source-button" data-id="${item.id}">🖼 源数据与图片</button>` : ''}</div>
   </article>`).join('');
+  target.querySelectorAll('.search-item').forEach((card, index) => {
+    const item = results[index]; if ((item.kind || kind) !== 'tv') return;
+    const details = document.createElement('details'); details.className = 'search-series-info';
+    const summary = document.createElement('summary'); summary.textContent = '季集概览 · 类型 · 内容分级';
+    const host = document.createElement('div'); let loaded = false;
+    details.addEventListener('toggle', () => { if (details.open && !loaded) { loaded = true; loadSeriesSummary(String(item.id), host); } });
+    details.append(summary, host); card.append(details);
+    if (index === 0) details.open = true;
+  });
   $$('.source-button').forEach(button => button.addEventListener('click', () => loadSource(button.dataset.id)));
   target.querySelectorAll('.search-item').forEach((card, index) => { const item = results[index]; if ((item.kind || kind) === 'tv') card.querySelector('.actions').append(shelfActions(item.id, item.original_title || item.title)); });
   $$('.episode-button').forEach(button => button.addEventListener('click', () => openEpisodeDialog(button.dataset.id, button.dataset.title)));
@@ -376,8 +412,9 @@ function renderSourceWorkspace(data) {
   const target = $('#tmdb-result');
   target.className = 'result-space result-card';
   const scope = data.season === null ? '全剧概览' : `Season ${String(data.season).padStart(2,'0')} · ${data.episodes.length} 集`;
-  target.innerHTML = `<div class="result-toolbar"><div><strong>${escapeHtml(data.original_name)}</strong><div class="meta">${escapeHtml(data.title)} · ${escapeHtml(data.year)} · ${escapeHtml(data.original_language)} · TMDb ${data.tmdb_id}</div></div></div><div class="source-name-bar"><code>${escapeHtml(data.recommended_name)}</code></div><div class="actions source-workspace-actions"><button class="mini-button" data-source-copy="title">复制源剧名</button><button class="mini-button" data-source-copy="folder">复制目录名</button><button class="mini-button" id="workspace-episode">🎬 查询单集</button><button class="mini-button" id="copy-json">复制当前源数据</button><button class="mini-button" id="download-json">下载源数据</button><button class="mini-button" id="source-all">读取全剧源数据</button></div><h3>${escapeHtml(scope)}</h3>${data.season === null ? `<p class="episode-overview">${escapeHtml(data.overview || '暂无简介')}</p><p class="meta">共有 ${data.seasons.length} 季（含特别篇）。在图片栏选择一季，源数据与图片一起切换。</p>` : `<h4>${escapeHtml(data.season_name || '')}</h4><div class="source-episode-list">${data.episodes.map(ep => `<details class="source-episode"><summary><b>E${String(ep.episode).padStart(2,'0')}</b> ${escapeHtml(ep.name || '暂无标题')}</summary><p class="episode-overview">${escapeHtml(ep.overview || '暂无源语言简介')}</p><div class="actions"><button class="mini-button workspace-copy" data-copy="${escapeHtml(ep.name)}">复制单集名</button><button class="mini-button workspace-copy" data-copy="${escapeHtml(ep.overview)}">复制源简介</button><button class="mini-button workspace-episode" data-episode="${ep.episode}">查看中文详情</button></div></details>`).join('') || '<p class="meta">该季暂无单集数据。</p>'}</div>`}`;
+  target.innerHTML = `<div class="result-toolbar"><div><strong>${escapeHtml(data.original_name)}</strong><div class="meta">${escapeHtml(data.title)} · ${escapeHtml(data.year)} · ${escapeHtml(data.original_language)} · TMDb ${data.tmdb_id}</div></div></div><div class="source-name-bar"><code>${escapeHtml(data.recommended_name)}</code></div><div class="actions source-workspace-actions"><button class="mini-button" data-source-copy="title">复制源剧名</button><button class="mini-button" data-source-copy="folder">复制目录名</button><button class="mini-button" id="workspace-episode">🎬 查询单集</button><button class="mini-button" id="copy-json">复制当前源数据</button><button class="mini-button" id="download-json">下载源数据</button><button class="mini-button" id="source-all">读取全剧源数据</button></div><h3>${escapeHtml(scope)}</h3>${data.season === null ? `<p class="episode-overview">${escapeHtml(data.overview || '暂无简介')}</p><p class="meta">季数与每季集数见上方概览。在图片栏选择一季，源数据与图片一起切换。</p>` : `<h4>${escapeHtml(data.season_name || '')}</h4><div class="source-episode-list">${data.episodes.map(ep => `<details class="source-episode"><summary><b>E${String(ep.episode).padStart(2,'0')}</b> ${escapeHtml(ep.name || '暂无标题')}</summary><p class="episode-overview">${escapeHtml(ep.overview || '暂无源语言简介')}</p><div class="actions"><button class="mini-button workspace-copy" data-copy="${escapeHtml(ep.name)}">复制单集名</button><button class="mini-button workspace-copy" data-copy="${escapeHtml(ep.overview)}">复制源简介</button><button class="mini-button workspace-episode" data-episode="${ep.episode}">查看中文详情</button></div></details>`).join('') || '<p class="meta">该季暂无单集数据。</p>'}</div>`}`;
   $('[data-source-copy="title"]').addEventListener('click', async () => { await navigator.clipboard.writeText(data.original_name); toast('源剧名已复制'); });
+  target.querySelector('.source-name-bar').insertAdjacentHTML('beforebegin', seriesInfoMarkup(data));
   target.querySelector('.source-workspace-actions').append(shelfActions(data.tmdb_id, data.original_name || data.title));
   target.querySelectorAll('.source-episode').forEach((row, index) => { const button = row.querySelector('.workspace-copy'); button.dataset.copy = episodeCopyTitle(data.episodes[index].episode, data.episodes[index].name); });
   $('[data-source-copy="folder"]').addEventListener('click', async () => { await navigator.clipboard.writeText(data.recommended_name); toast('目录名已复制'); });
@@ -405,7 +442,7 @@ function artworkGroup(data, key, title) {
 
 function renderArtwork(data) {
   const side = $('#tmdb-artwork');
-  side.innerHTML = `<div class="result-toolbar"><h3>🖼 封面与剧照</h3><a class="mini-button" href="${escapeHtml(data.detail_url)}" target="_blank" rel="noopener noreferrer">TMDb ↗</a></div><label class="artwork-season-label">源数据与图片 · 季选择<select id="artwork-season"><option value="">全剧概览</option>${data.seasons.map(item => `<option value="${item.number}"${item.number === data.season ? ' selected' : ''}>${item.number === 0 ? '特别篇 S00' : `Season ${String(item.number).padStart(2,'0')}`} · ${item.episode_count} 集</option>`).join('')}</select></label><p class="meta artwork-ranking">每类按图片评分降序取前 5，评分相同优先票数；无投票项排后，再按清晰度排序。这里不是剧集评分。</p>${data.warnings.length ? `<p class="artwork-warning">${escapeHtml(data.warnings.join('；'))}</p><button class="mini-button" id="artwork-retry">↻ 重试本季</button>` : ''}${artworkGroup(data, 'posters', data.season === null ? '剧集封面' : '本季封面')}${artworkGroup(data, data.season === null ? 'backdrops' : 'stills', data.season === null ? '全剧背景图' : '本季剧照')}<p class="meta artwork-credit">图片与数据来源 TMDb。This product uses the TMDB API but is not endorsed or certified by TMDB.</p>`;
+  side.innerHTML = `<div class="result-toolbar"><h3>🖼 封面与剧照</h3><a class="mini-button" href="${escapeHtml(data.detail_url)}" target="_blank" rel="noopener noreferrer">TMDb ↗</a></div><label class="artwork-season-label">源数据与图片 · 季选择<select id="artwork-season"><option value="">全剧概览</option>${data.seasons.map(item => `<option value="${item.number}"${item.number === data.season ? ' selected' : ''}>${item.number === 0 ? '特别篇 S00' : `Season ${String(item.number).padStart(2,'0')}`} · ${Number.isInteger(item.episode_count) ? `${item.episode_count} 集` : '集数暂无资料'}</option>`).join('')}</select></label><p class="meta artwork-ranking">每类按图片评分降序取前 5，评分相同优先票数；无投票项排后，再按清晰度排序。这里不是剧集评分。</p>${data.warnings.length ? `<p class="artwork-warning">${escapeHtml(data.warnings.join('；'))}</p><button class="mini-button" id="artwork-retry">↻ 重试本季</button>` : ''}${artworkGroup(data, 'posters', data.season === null ? '剧集封面' : '本季封面')}${artworkGroup(data, data.season === null ? 'backdrops' : 'stills', data.season === null ? '全剧背景图' : '本季剧照')}<p class="meta artwork-credit">图片与数据来源 TMDb。This product uses the TMDB API but is not endorsed or certified by TMDB.</p>`;
   $('#artwork-season').addEventListener('change', event => loadSource(String(data.tmdb_id), event.target.value === '' ? null : Number(event.target.value)));
   $$('.artwork-copy').forEach(button => button.addEventListener('click', async () => { await navigator.clipboard.writeText(button.dataset.url); toast('原图链接已复制'); }));
   if (data.warnings.length) $('#artwork-retry').addEventListener('click', () => loadSource(String(data.tmdb_id), data.season));
@@ -427,6 +464,7 @@ async function loadAllSource(id) {
     target.innerHTML = `<div class="result-toolbar"><div><strong>${escapeHtml(data.title || data.original_name)}</strong><div class="meta">${data.year || '年份未知'} · TMDb ${data.tmdb_id} · ${escapeHtml(data.original_language)} · ${data.episodes.length} 集</div></div><div class="actions"><button class="mini-button" id="copy-source-title">仅复制剧名</button><button class="mini-button" id="copy-source-folder">复制文件夹名</button><button class="mini-button" id="copy-tmdb-id">复制 TMDb 号</button><button class="mini-button" id="copy-json">复制源数据</button><button class="mini-button" id="download-json">下载</button></div></div>
       <div class="source-name-bar"><code>${escapeHtml(data.recommended_name || '')}</code></div>
       <div class="season-groups">${Object.entries(seasons).sort((a,b) => Number(a[0]) - Number(b[0])).map(([season, episodes], index) => `<details class="season-group" ${index === 0 ? 'open' : ''}><summary><span>Season ${String(season).padStart(2,'0')}</span><small>${episodes.length} 集</small></summary><div class="table-wrap"><table><thead><tr><th>集</th><th>源语言标题</th><th>源语言简介</th></tr></thead><tbody>${episodes.map(ep => `<tr><td class="num">E${String(ep.episode).padStart(2,'0')}</td><td><div class="episode-copy"><span>${escapeHtml(ep.name) || '—'}</span><button class="mini-button copy-episode-name" data-copy="${escapeHtml(ep.name)}">复制单集名</button></div></td><td class="overview"><div class="episode-copy"><span>${escapeHtml(ep.overview) || '—'}</span><button class="mini-button copy-episode-overview" data-copy="${escapeHtml(ep.overview)}">复制简介</button></div></td></tr>`).join('')}</tbody></table></div></details>`).join('')}</div>`;
+    target.querySelector('.source-name-bar').insertAdjacentHTML('beforebegin', seriesInfoMarkup(data));
     const episodeButton = document.createElement('button');
     episodeButton.type = 'button'; episodeButton.className = 'mini-button'; episodeButton.textContent = '🎬 查询单集';
     episodeButton.addEventListener('click', () => openEpisodeDialog(String(data.tmdb_id), data.title || data.original_name));

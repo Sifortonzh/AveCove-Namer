@@ -180,6 +180,25 @@ td { padding: 13px 16px; border-top: 1px solid var(--line-soft); vertical-align:
 td.num { width: 62px; color: #858d9b; font-variant-numeric: tabular-nums; }
 td.overview { min-width: 380px; color: #b0b6c1; }
 .search-list, .event-list { display: grid; gap: 10px; }
+.search-series-info { grid-column:1/-1; min-width:0; border-top:1px solid var(--line-soft); padding-top:12px; }
+.search-series-info > summary { color:var(--accent); cursor:pointer; font-size:13px; font-weight:650; padding:8px 0; }
+.series-facts { margin:16px 18px; padding:16px; border:1px solid var(--line); border-radius:12px; background:var(--surface-2); }
+.search-series-info .series-facts { margin:8px 0 0; }
+.series-facts-heading { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+.series-facts-heading small { color:var(--muted); font-size:11px; }
+.series-facts-meta { display:grid; gap:10px; margin:14px 0 8px; font-size:12px; }
+.series-facts-meta > div { display:grid; grid-template-columns:64px minmax(0,1fr); gap:10px; }
+.series-facts-meta dt { color:var(--muted); }
+.series-facts-meta dd { margin:0; overflow-wrap:anywhere; line-height:1.6; }
+.content-rating { display:inline-block; padding:2px 7px; margin:0 3px 4px 0; border:1px solid var(--line); border-radius:6px; color:var(--text); font-weight:600; }
+.series-rating-note { font-size:11px; line-height:1.6; }
+.series-season-list { margin-top:14px; }
+.series-season-list > summary { cursor:pointer; font-size:12px; color:var(--muted); }
+.series-season-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; margin-top:10px; max-height:300px; overflow-y:auto; }
+.series-season-item { padding:10px; border:1px solid var(--line-soft); border-radius:8px; display:grid; gap:5px; font-size:12px; }
+.series-season-item span,.series-season-item small { color:var(--muted); overflow-wrap:anywhere; }
+.shelf-genre { margin:5px 0 0; font-size:11px; color:var(--muted); line-height:1.5; overflow-wrap:anywhere; }
+@media(max-width:600px) { .series-facts { margin:12px; padding:12px; } .series-facts-meta > div { grid-template-columns:1fr; gap:4px; } }
 .search-item, .event-item { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 16px; padding: 16px 18px; border: 1px solid var(--line-soft); border-radius: 13px; background: var(--surface); }
 .search-item h3, .event-item h3 { margin: 0; font-size: 15px; font-weight: 650; }
 .search-item p, .event-item p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }

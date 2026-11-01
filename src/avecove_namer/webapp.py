@@ -36,7 +36,7 @@ from .executor import ExecutionError, execute_plan
 from .models import RenameOperation, RenamePlan
 from .naming import NamingPolicy, VIDEO_EXTENSIONS
 from .planner import _season_from_folder, make_plan, normalized_season_folder_name, read_plan, write_plan
-from .tmdb import TMDBClient, TMDBError
+from .tmdb import TMDBClient, TMDBError, series_summary
 from .workflow import LitePanWorkflow
 
 
@@ -324,9 +324,8 @@ class App:
         details = client._get(f'/tv/{ident}', {'language':'zh-CN', 'append_to_response':'content_ratings'})
         language = str(details.get('original_language') or '')
         images = client._get(f'/tv/{ident}/images', {})
-        ratings = details.get('content_ratings', {}).get('results', [])
-        certification = next((row.get('rating') for country in ('US','CN','GB') for row in ratings
-                              if row.get('iso_3166_1') == country and row.get('rating')), '')
+        summary = series_summary(details)
+        primary = next(iter(summary['content_ratings']), {})
         def image_path(value):
             return value if isinstance(value, str) and re.fullmatch(r'/[\w-]+\.(?:jpg|png|webp)', value) else ''
         def source_image(kind, fallback):
@@ -337,14 +336,14 @@ class App:
                 if ranked:
                     return ranked[0]['file_path']
             return image_path(fallback)
-        return {'originalTitle': str(details.get('original_name') or ''),
+        return {**summary, 'originalTitle': str(details.get('original_name') or ''),
                 'translatedTitle': str(details.get('name') or ''),
                 'posterPath': source_image('posters', details.get('poster_path')),
                 'backdropPath': source_image('backdrops', details.get('backdrop_path')),
                 'artworkLanguage': language,
                 'year': str(details.get('first_air_date') or '')[:4],
-                'genres': [str(row.get('name','')) for row in details.get('genres', [])][:3],
-                'rating': float(details.get('vote_average') or 0), 'certification': certification,
+                'rating': float(details.get('vote_average') or 0),
+                'certification': primary.get('rating', ''), 'certificationCountry': primary.get('country', ''),
                 'status': str(details.get('status') or '')}
 
     def tmdb(self) -> TMDBClient:
@@ -1552,6 +1551,13 @@ class App:
             raise ValueError("集号须从 1 开始；特别篇可使用 S00E01")
         return self.tmdb().episode_details(int(series_id), season, episode)
 
+    def series_summary(self, payload: dict[str, Any]) -> dict[str, Any]:
+        ident = str(payload.get('tmdb_id') or '').strip()
+        if not ident.isdecimal() or not 0 < int(ident) < 100000000:
+            raise ValueError('请输入有效的 TMDb 剧集编号')
+        details = self.tmdb().details(int(ident), 'tv', 'zh-CN')
+        return {'tmdb_id': int(ident), **series_summary(details)}
+
     def source_episodes(self, payload: dict[str, Any]) -> dict[str, Any]:
         value = str(payload.get("query") or payload.get("tmdb_id") or "").strip()
         if not value:
@@ -2285,6 +2291,7 @@ def handler_factory(app: App):
                     "/api/tmdb/search": app.search,
                     "/api/tmdb/source": app.source_episodes,
                     "/api/tmdb/episode": app.episode_details,
+                    "/api/tmdb/summary": app.series_summary,
                     "/api/tmdb/artwork": app.start_artwork,
                     "/api/library/search": app.library_search,
                     "/api/automation": app.set_automation,

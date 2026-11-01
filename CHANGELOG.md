@@ -1,5 +1,12 @@
 # Changelog / 更新记录
 
+## 0.7.2 — 2026-11-01
+
+- Add a shared TV facts contract for season totals, per-season episode counts, genres, series type and region-specific content classifications. Specials are separate; unknown data remains explicitly unknown.
+- Add an on-demand lightweight summary in search results and a facts block in source/artwork details. Genre and classification badges also appear in the persistent series shelf.
+- Fetch details and classifications together; no image/episode traversal is needed for summaries. Background refresh upgrades existing shelf metadata without changing saved flags or watch progress.
+- 新增季集概览、类型及地区分级，查询详情与收藏共用数据规则；保留收藏、在看、观看日期和进度。
+
 ## 0.7.1 — 2026-11-01
 
 - Unify the browser title, workspace brand and health service identity as **AveCove Namer**.

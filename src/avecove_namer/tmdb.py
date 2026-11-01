@@ -34,6 +34,49 @@ class TMDBError(RuntimeError):
     pass
 
 
+def series_summary(details: dict[str, object]) -> dict[str, object]:
+    """One metadata contract for query details, artwork and persistent shelves."""
+    def count(value):
+        try:
+            number = int(value) if value is not None else None
+            return number if number is not None and number >= 0 else None
+        except (ValueError, TypeError):
+            return None
+    seasons = {}
+    for row in details.get('seasons') or []:
+        if not isinstance(row, dict):
+            continue
+        number = count(row.get('season_number'))
+        if number is None:
+            continue
+        seasons[number] = {'number': number, 'name': str(row.get('name') or ''),
+                           'episode_count': count(row.get('episode_count'))}
+    ordered = [seasons[number] for number in sorted(seasons)]
+    regular = [row for row in ordered if row['number'] > 0]
+    reported = count(details.get('number_of_seasons'))
+    season_count = reported if reported is not None else len(regular) if ordered else None
+    episode_count = count(details.get('number_of_episodes'))
+    if episode_count is None and regular and all(row['episode_count'] is not None for row in regular):
+        episode_count = sum(row['episode_count'] for row in regular)
+    ratings, seen = [], set()
+    content_ratings = details.get('content_ratings') or {}
+    for row in content_ratings.get('results') or []:
+        if not isinstance(row, dict):
+            continue
+        country, rating = str(row.get('iso_3166_1') or '').strip(), str(row.get('rating') or '').strip()
+        if country and rating and (country, rating) not in seen:
+            ratings.append({'country': country, 'rating': rating})
+            seen.add((country, rating))
+    # A rating always keeps its region; never infer a universal age restriction.
+    origins = [str(value) for value in details.get('origin_country') or []]
+    preferred = list(dict.fromkeys([*origins, 'US', 'CN', 'GB']))
+    ratings.sort(key=lambda row: (preferred.index(row['country']) if row['country'] in preferred else len(preferred), row['country'], row['rating']))
+    return {'seasons': ordered, 'season_count': season_count, 'episode_count': episode_count,
+            'has_specials': 0 in seasons,
+            'genres': list(dict.fromkeys(str(row['name']) for row in details.get('genres') or [] if isinstance(row, dict) and row.get('name'))),
+            'series_type': str(details.get('type') or ''), 'content_ratings': ratings}
+
+
 class TMDBClient:
     def __init__(self, credential: str, timeout: float = 15.0):
         self.credential = credential.strip()
@@ -203,7 +246,10 @@ class TMDBClient:
     def details(self, tmdb_id: int, kind: str, language: str) -> dict[str, object]:
         if kind not in {"tv", "movie"}:
             raise TMDBError("TMDB kind must be tv or movie")
-        return self._get(f"/{kind}/{tmdb_id}", {"language": language})
+        params = {"language": language}
+        if kind == 'tv':
+            params['append_to_response'] = 'content_ratings'
+        return self._get(f"/{kind}/{tmdb_id}", params)
 
     def collection(self, collection_id: int) -> dict[str, object]:
         if collection_id < 1:
@@ -282,13 +328,12 @@ class TMDBClient:
             raise ValueError("剧集编号或季号无效")
         details = self.details(tmdb_id, "tv", "zh-CN")
         language = str(details.get("original_language") or "en")
-        seasons = sorted(({
-            "number": int(item["season_number"]), "name": str(item.get("name") or ""),
-            "episode_count": int(item.get("episode_count") or 0),
-        } for item in details.get("seasons", []) if isinstance(item, dict) and item.get("season_number") is not None), key=lambda item: item["number"])
+        summary = series_summary(details)
+        seasons = summary['seasons']
         if season is not None and season not in {item["number"] for item in seasons}:
             raise ValueError("TMDb 没有该季，请从季列表中选择")
         result = {
+            **summary,
             "tmdb_id": tmdb_id, "title": str(details.get("name") or ""),
             "original_name": str(details.get("original_name") or details.get("name") or ""),
             "original_language": language, "year": str(details.get("first_air_date") or "")[:4],
@@ -361,6 +406,7 @@ class TMDBClient:
                 )
 
         return {
+            **series_summary(details),
             "tmdb_id": tmdb_id,
             "original_language": original_language,
             "original_name": str(details.get("original_name") or ""),
