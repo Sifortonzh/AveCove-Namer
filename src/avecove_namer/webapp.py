@@ -29,6 +29,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .backends import BackendError, LitePanWebDAVBackend, OpenListBackend
 from .shelf import SeriesShelf
+from .handoff import HandoffInbox
 LITEPAN_CHANGES_FILE = Path('/opt/banwugan-litepan-bridge/namer-changes.json')
 from .detective import _find_movie_tmdb_id, _find_tv_tmdb_id, discover_movie_works, fingerprint, infer_search_terms
 from .executor import ExecutionError, execute_plan
@@ -226,6 +227,7 @@ class App:
         self.settings.work_root.mkdir(parents=True, exist_ok=True)
         self._jobs: dict[str, dict[str, Any]] = {}
         self.series_shelf = SeriesShelf(self.settings.work_root.parent / 'series-shelf.json', self.shelf_metadata)
+        self.handoff_inbox = HandoffInbox(os.getenv('AVECOVE_HANDOFF_INBOX', str(self.settings.work_root.parent / 'handoff-inbox.sqlite3')))
         self._jobs_lock = threading.Lock()
         self._artwork_lock = threading.Lock()
         self._artwork_slots = threading.BoundedSemaphore(2)
@@ -2241,6 +2243,9 @@ def handler_factory(app: App):
                 if path == '/api/litepan/changes':
                     self.json_response(HTTPStatus.OK, app.litepan_changes())
                     return
+                if path == '/api/namer/handoff':
+                    self.json_response(HTTPStatus.OK, app.handoff_inbox.request())
+                    return
                 if path == "/api/namer/pending":
                     self.json_response(HTTPStatus.OK, app.namer_pending())
                     return
@@ -2274,6 +2279,7 @@ def handler_factory(app: App):
         def do_POST(self) -> None:
             try:
                 routes = {
+                    "/api/namer/handoff/ack": app.handoff_inbox.request,
                     "/api/tmdb/shelf": app.series_shelf.request,
                     "/api/litepan/changes/ack": app.litepan_changes,
                     "/api/tmdb/search": app.search,

@@ -861,6 +861,23 @@ async function checkHealth() {
 }
 
 let litepanChanges = [];
+let handoffItems = [];
+async function loadHandoffInbox() {
+  try {
+    const data = await api('/api/namer/handoff');
+    handoffItems = data.items || [];
+    $('#handoff-status').textContent = data.pending ? `${data.pending} 条通知 · 本批 ${handoffItems.length} 项 · 加入后仍需预览确认` : '暂无收录通知 · 资源完成转存后可通过本机 notify 命令交接';
+    $('#handoff-add').disabled = !handoffItems.length;
+    $('#handoff-ack').disabled = !handoffItems.length;
+  } catch (error) { $('#handoff-status').textContent = `通知读取失败：${error.message}`; }
+}
+$('#handoff-reload').addEventListener('click', loadHandoffInbox);
+$('#handoff-add').addEventListener('click', () => { addNamerItems(handoffItems); toast('通知已加入选择；请生成预览并确认，尚未改名'); });
+$('#handoff-ack').addEventListener('click', async () => {
+  if (!confirm('📥 仅标记本批通知已处理？不会删除或改名网盘文件。')) return;
+  try { await api('/api/namer/handoff/ack', {items:handoffItems.map(({id, signature}) => ({id, signature}))}); await loadHandoffInbox(); }
+  catch (error) { toast(error.message, true); }
+});
 async function loadLitepanChanges() {
   const status = $('#litepan-changes-status');
   try {
@@ -891,7 +908,7 @@ switchView(initial);
 updateNamerQueue();
 checkHealth();
 $('#namer-utilities').addEventListener('toggle', () => {
-  if ($('#namer-utilities').open) loadLitepanChanges();
+  if ($('#namer-utilities').open) { loadLitepanChanges(); loadHandoffInbox(); }
 });
 $('#shelf-reload').addEventListener('click', loadShelf);
 $('#watched-cancel').addEventListener('click', () => $('#watched-dialog').close());

@@ -1,5 +1,12 @@
 # Changelog / 更新记录
 
+## 0.7.0 — 2026-11-01
+
+- Add a local completed-acquisition notification CLI and durable inbox, with version-aware deduplication and stale-ack protection. No public write webhook or cloud mutation is introduced.
+- Add notification review, one-click cross-drive queue selection and explicit dismissal to the workspace. Existing LitePan/Vesta detection remains unchanged.
+- Refresh the Namer identity with a small-size-friendly clapperboard/N SVG.
+- 新增收录通知交接通道及审核入口；保留预览、确认、日志边界，不自动执行改名或删除资源。
+
 ## 0.6.0 — 2026-10-31
 
 - Consolidate the live LitePan-first workspace, cross-drive batch selection, source-language naming and collection/season improvements.

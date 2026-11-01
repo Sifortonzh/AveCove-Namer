@@ -4,7 +4,10 @@ Reviewable cloud media naming, original-language TMDb metadata, and a personal s
 
 [简体中文](README.zh-CN.md) · [Release workflow](docs/releases.md) · [Changelog](CHANGELOG.md)
 
-## Current release: 0.6.0
+## Current release: 0.7.0
+
+- **Completed-acquisition inbox:** a local `notify` command for skill/Hermes handoffs, durable version-aware deduplication, and one-click batch selection. No external agent or unattended rename is enabled.
+- **Namer identity:** a compact clapperboard/N mark for the workspace and browser icon.
 
 - **LitePan first:** browse only selected folders, select works across drives, preview a batch, then explicitly confirm changes. No full-drive scan is required.
 - **Original-language naming:** consistent parent and child names, `{tmdb=...}` IDs, season names and source metadata. Movies, series, and movie collections are supported.

@@ -73,6 +73,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=__version__)
     subcommands = parser.add_subparsers(dest="command", required=True)
 
+    notify = subcommands.add_parser('notify', help='Read one completed-acquisition JSON notification from stdin; never scan or rename')
+    notify.add_argument('--inbox', default=os.getenv('AVECOVE_HANDOFF_INBOX', '/opt/docker/avecove-namer/handoff-inbox.sqlite3'))
+
     login = subcommands.add_parser("login", help="Create a protected OpenList token file")
     login.add_argument("--openlist-url", required=True)
     login.add_argument("--username", required=True)
@@ -160,6 +163,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(args: argparse.Namespace) -> int:
+    if args.command == 'notify':
+        from .handoff import HandoffInbox
+        raw = sys.stdin.read(32769)
+        if len(raw.encode('utf-8')) > 32768:
+            raise ValueError('通知最多 32 KB')
+        print(json.dumps(HandoffInbox(args.inbox).receive(json.loads(raw)), ensure_ascii=False))
+        return 0
+
     if args.command == "login":
         password = getpass.getpass("OpenList password: ")
         token = login_openlist(args.openlist_url, args.username, password)

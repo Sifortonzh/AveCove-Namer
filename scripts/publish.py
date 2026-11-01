@@ -64,6 +64,13 @@ shutil.copytree(old, backup / 'source')
 for name in ('series-shelf.json','rename-rates.json','scout-roots.json'):
     path = base / name
     if path.is_file(): shutil.copy2(path, backup / name)
+inbox = base / 'handoff-inbox.sqlite3'
+if inbox.is_file():
+    import sqlite3
+    with sqlite3.connect('file:' + str(inbox) + '?mode=ro', uri=True) as source_db:
+        with sqlite3.connect(backup / inbox.name) as backup_db:
+            source_db.backup(backup_db)
+    (backup / inbox.name).chmod(0o600)
 target.mkdir(parents=True)
 with tarfile.open('/tmp/namer-' + sha + '.tar') as archive:
     for entry in archive.getmembers():

@@ -112,4 +112,11 @@ assert.match(element('#tmdb-result').innerHTML, /Latest selection/);
 assert.doesNotMatch(element('#tmdb-result').innerHTML, /Stale selection/);
 vm.runInContext('renderSearch([{id:1399,kind:"tv",title:"权力的游戏"}], "tv")', context);
 assert.equal(element('#tmdb-artwork').hidden, true);
-console.log('UI contracts passed: startup, old hash, TV/movie buttons, dialog, query, validation, error retry, close');
+// Notifications only select paths; explicit preview/apply remains separate.
+const notifyStart = calls.length;
+vm.runInContext('handoffItems=[{id:"notice-1",signature:"v1",path:"/123/00影/01国/Example",name:"Example",provider:"123",kind:"movie"}]', context);
+element('#handoff-add').listeners.click();
+assert.equal(calls.length, notifyStart, 'Adding notification to queue performs no cloud or apply request');
+assert.equal(vm.runInContext('namerQueue.has("/123/00影/01国/Example")', context), true);
+assert.match(fs.readFileSync(new URL('../src/avecove_namer/web/index.html', import.meta.url), 'utf8'), /namer-mark\.svg\?v=0\.7\.0/);
+console.log('UI contracts passed: startup, TV/movie, dialogs, artwork, validation and notification-to-queue without cloud mutation');
