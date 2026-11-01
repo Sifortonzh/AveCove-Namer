@@ -215,8 +215,8 @@ $('#tmdb-form').addEventListener('submit', async event => {
   const year = $('#tmdb-year').value.trim();
   if (!query) return;
   hideArtwork();
-  checkLibrary(query);
   if (mediaKind === 'tv' && /^\d+$/.test(query)) return loadSource(query);
+  checkLibrary(query);
   const target = $('#tmdb-result');
   loading(target, '正在搜索 TMDb');
   try {

@@ -136,3 +136,7 @@ assert.equal(calls.length-countBeforeSummary,1,'Summary uses one shared request,
 assert.match(element('#test-summary').innerHTML,/TV-MA/);
 assert.equal(element('#test-summary').getAttribute('aria-busy'),'false');
 console.log('Series facts UI: season distribution, regional classifications, missing data and lightweight shared request passed.');
+element('#tmdb-query').value='1399'; element('#tmdb-year').value='';
+const beforeIdLookup=calls.length;
+await element('#tmdb-form').listeners.submit({preventDefault(){}});
+assert.equal(calls.slice(beforeIdLookup).some(call=>call.url.endsWith('/api/library/search')),false,'TMDb ID lookup must not implicitly enumerate cloud directories');
