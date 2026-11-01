@@ -23,6 +23,7 @@ class ReleaseTests(unittest.TestCase):
             with urllib.request.urlopen(f'http://127.0.0.1:{server.server_port}/api/health') as response:
                 data = json.load(response)
             self.assertEqual(data['version'], __version__)
+            self.assertEqual(data['service'], 'AveCove Namer')
             self.assertEqual(data['activeJobs'], 1)
             self.assertEqual(set(data), {'status','service','version','revision','activeJobs'})
         finally:

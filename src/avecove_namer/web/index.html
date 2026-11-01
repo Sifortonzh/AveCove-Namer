@@ -4,24 +4,24 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#edf5fb">
-  <meta name="description" content="AveCove 私人媒体工具箱">
+  <meta name="description" content="AveCove Namer · 影视命名、TMDb 查询与我的剧集">
   <link rel="icon" type="image/svg+xml" href="namer-mark.svg?v=0.7.0">
-  <title>AveCove Media Tools</title>
+  <title>AveCove Namer</title>
   <script>
     (() => {
       const hour = new Date().getHours();
       document.documentElement.dataset.scene = hour < 5 || hour >= 21 ? 'night' : hour < 11 ? 'morning' : hour < 17 ? 'day' : 'evening';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=0.7.0">
+  <link rel="stylesheet" href="styles.css?v=0.7.1">
 </head>
 <body>
   <div class="shell">
     <button class="nav-scrim" id="nav-scrim" aria-label="关闭导航" hidden></button>
     <aside class="sidebar" id="tool-sidebar">
-      <a class="brand" href="#namer" aria-label="AveCove Media Tools 首页">
+      <a class="brand" href="#namer" aria-label="AveCove Namer 首页">
         <img class="brand-mark" src="namer-mark.svg?v=0.7.0" alt="Namer" width="38" height="38">
-        <span><strong>AveCove</strong><small>Media Tools</small></span>
+        <span><strong>AveCove Namer</strong><small>影视命名工作台</small></span>
       </a>
       <nav aria-label="工具导航">
         <button class="nav-item active" data-view="namer"><span>✦</span>Namer</button>
@@ -37,7 +37,7 @@
     <main>
       <header class="topbar">
         <button class="mobile-menu" id="mobile-menu" aria-label="打开导航" aria-expanded="false" aria-controls="tool-sidebar">☰</button>
-        <div><span class="eyebrow">PRIVATE WORKSPACE</span><h1 id="page-title">Namer</h1></div>
+        <div><span class="eyebrow">PRIVATE WORKSPACE</span><h1 id="page-title">AveCove Namer</h1></div>
         <a class="home-link" href="/">← 返回聚合页</a>
         <span class="date" id="today"></span>
       </header>
@@ -92,9 +92,8 @@
           </form>
         </div>
         <div id="namer-result" class="result-space empty-state"><span class="empty-icon">✦</span><p>输入具体作品路径，先识别再预览</p></div>
-        <details class="namer-utilities" id="namer-utilities"><summary>辅助目录与更新日志 <small>巡影 · LitePan / Vesta</small></summary>
+        <details class="namer-utilities" id="namer-utilities"><summary>辅助目录与更新日志 <small>收录通知 · LitePan / Vesta</small></summary>
           <div class="queue-toolbar utility-log"><div><strong>📥 收录通知 · skill / Hermes</strong><span id="handoff-status" aria-live="polite">展开后读取；通知不会自动改名</span></div><div class="section-actions"><button type="button" class="secondary" id="handoff-reload">刷新通知</button><button type="button" class="secondary" id="handoff-ack" disabled>本批已处理 / 忽略</button><button type="button" class="primary" id="handoff-add" disabled>加入批量队列</button></div></div>
-          <details class="series-shelf" id="scout-workbench"><summary>巡影收录目录</summary><p class="meta">巡影负责收录，Namer 负责预览和确认命名。只读取所点目录，不全盘扫描，不移动巡影根目录。</p><div class="actions" id="scout-roots"></div><div id="scout-directory-items" aria-live="polite"></div></details>
           <div class="queue-toolbar utility-log"><div><strong>LitePan · Vesta 更新日志</strong><span id="litepan-changes-status" aria-live="polite">展开后读取更新记录</span></div><div class="section-actions"><button type="button" class="secondary" id="litepan-changes-reload">刷新变化</button><button type="button" class="secondary" id="litepan-changes-ack" disabled>本批已处理 / 忽略</button><button type="button" class="secondary" id="litepan-changes-add" disabled>加入本批更新</button></div></div>
         </details>
       </section>
@@ -132,6 +131,6 @@
     </form>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=0.7.0" defer></script>
+  <script src="app.js?v=0.7.1" defer></script>
 </body>
 </html>

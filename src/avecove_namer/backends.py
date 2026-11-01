@@ -110,18 +110,7 @@ class LitePanWebDAVBackend(StorageBackend):
         if '..' in parts:
             raise BackendError('Invalid cloud path')
         if len(parts) > 2 and parts[2] == '@scout':
-            config = Path(os.getenv('AVECOVE_SCOUT_ROOTS_FILE', '/opt/docker/avecove-namer/scout-roots.json'))
-            mappings = json.loads(config.read_text()) if config.is_file() else {}
-            root = mappings.get(parts[1])
-            # Per-category acquisition roots coexist with the older shared root.
-            if isinstance(root, dict):
-                root = root.get(parts[3]) if len(parts) > 3 else None
-                remainder = parts[4:]
-            else:
-                remainder = parts[3:]
-            if not root or not str(root).startswith('/') or '..' in PurePosixPath(root).parts:
-                raise BackendError('巡影目录尚未配置')
-            return [*PurePosixPath(root).parts[1:], *remainder]
+            raise BackendError('巡影接入已移除，请选择现有媒体库中的真实作品目录')
         return [*PurePosixPath(self.roots[parts[1]]).parts[1:], *parts[2:]]
 
     def _url(self, virtual_path: str) -> str:

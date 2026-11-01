@@ -14,7 +14,8 @@ class ScoutRoots(unittest.TestCase):
             config.write_text(json.dumps({'GuangYa':{'00剧':'/Root/00剧/Media Scout'}}))
             backend = LitePanWebDAVBackend('http://lite','u','p',{'GuangYa':'/Root'})
             with patch.dict(os.environ, {'AVECOVE_SCOUT_ROOTS_FILE':str(config)}):
-                self.assertEqual(backend._physical_parts('/GuangYa/@scout/00剧/Show'), ['Root','00剧','Media Scout','Show'])
+                with self.assertRaisesRegex(BackendError, '接入已移除'):
+                    backend._physical_parts('/GuangYa/@scout/00剧/Show')
                 self.assertEqual(backend._physical_parts('/GuangYa/00剧/01中/Show'), ['Root','00剧','01中','Show'])
                 with self.assertRaises(BackendError):backend._physical_parts('/GuangYa/@scout/00影')
 
@@ -23,7 +24,8 @@ class ScoutRoots(unittest.TestCase):
             config = Path(directory)/'roots.json'; config.write_text(json.dumps({'115':'/Mediary Scout'}))
             backend = LitePanWebDAVBackend('http://lite','u','p', {'115':'/长夜留灯'})
             with patch.dict(os.environ, {'AVECOVE_SCOUT_ROOTS_FILE':str(config)}):
-                self.assertIn('/dav/115/Mediary%20Scout/TV/Show', backend._url('/115/@scout/TV/Show'))
+                with self.assertRaisesRegex(BackendError, '接入已移除'):
+                    backend._url('/115/@scout/TV/Show')
                 self.assertNotIn('Mediary', backend._url('/115/00剧/01美/Show'))
                 with self.assertRaises(BackendError): backend._url('/115/@scout/../secret')
                 with self.assertRaises(BackendError): backend._url('/123/@scout/TV')

@@ -2216,7 +2216,7 @@ def handler_factory(app: App):
                     revision = marker.read_text().strip() if marker.is_file() else None
                     with app._jobs_lock:
                         active = sum(job.get('status') == 'running' for job in app._jobs.values())
-                    self.json_response(HTTPStatus.OK, {"status": "ok", "service": "AveCove Media Tools",
+                    self.json_response(HTTPStatus.OK, {"status": "ok", "service": "AveCove Namer",
                         "version": __version__, "revision": revision, "activeJobs": active})
                     return
                 if path == '/api/tmdb/shelf':
@@ -2309,13 +2309,13 @@ def handler_factory(app: App):
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="AveCove Media Tools private web UI")
+    parser = argparse.ArgumentParser(description="AveCove Namer private web UI")
     parser.add_argument("--host", default=os.getenv("AVECOVE_WEB_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.getenv("AVECOVE_WEB_PORT", "8787")))
     args = parser.parse_args(argv)
     settings = Settings.from_env(args.host, args.port)
     server = ThreadingHTTPServer((settings.host, settings.port), handler_factory(App(settings)))
-    print(f"AveCove Media Tools listening on http://{settings.host}:{settings.port}")
+    print(f"AveCove Namer listening on http://{settings.host}:{settings.port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

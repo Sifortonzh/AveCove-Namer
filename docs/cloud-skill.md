@@ -43,7 +43,7 @@ only the displayed version, never a newer notification or any cloud file.
 - **Cloud skill:** search/acquire resources and return a provider + exact work directory + optional TMDb ID. Use the already-authorized cloud connection; do not export tokens.
 - **LitePan:** one storage adapter for directory listing and file operations.
 - **Namer:** verify identity, generate a plan, expose ambiguity/collisions, then apply only after explicit user confirmation; retain rollback journals.
-- **Scout/Vesta:** acquisition/change signals, not authorization to rename or delete.
+- **Vesta:** LitePan content-change signals, not authorization to rename or delete. Scout integration has been removed.
 
 ## Minimal handoff / 最小交接
 
@@ -55,7 +55,7 @@ The example is illustrative, not a real resource. Existing endpoints are `POST /
 
 ## Boundaries / 边界
 
-Only inspect selected works; no full-drive enumeration by default. Prefer stable file IDs to modified timestamps so a rename does not look like new content. Never rename a directory while Scout is writing it. Conflicts, unknown matches, missing metadata and uncertain move results stop for review. Different resolutions remain separate resources. A skill must not silently call apply or delete.
+Only inspect selected works; no full-drive enumeration by default. Prefer stable file IDs to modified timestamps so a rename does not look like new content. Never rename a directory during an active transfer. Conflicts, unknown matches, missing metadata and uncertain move results stop for review. Different resolutions remain separate resources. A skill must not silently call apply or delete.
 
 ## Next step / 下一步
 

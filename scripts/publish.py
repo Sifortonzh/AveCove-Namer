@@ -61,7 +61,7 @@ assert not target.exists(), 'Release already exists; use a new commit, never ove
 backup = base / 'backups' / ('release-' + time.strftime('%Y%m%d-%H%M%S'))
 backup.mkdir(parents=True)
 shutil.copytree(old, backup / 'source')
-for name in ('series-shelf.json','rename-rates.json','scout-roots.json'):
+for name in ('series-shelf.json','rename-rates.json'):
     path = base / name
     if path.is_file(): shutil.copy2(path, backup / name)
 inbox = base / 'handoff-inbox.sqlite3'

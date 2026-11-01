@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const titles = { tmdb: 'TMDb 查询', namer: 'Namer', detective: '识别记录' };
+const titles = { tmdb: 'TMDb 查询', namer: 'AveCove Namer', detective: '识别记录' };
 let mediaKind = 'tv';
 let lastSourceData = null;
 let savedSeries = new Map();
@@ -929,28 +929,3 @@ $('#watched-form').addEventListener('submit', async event => {
 });
 $$('[data-shelf-filter]').forEach(button => button.addEventListener('click', () => { shelfFilter = button.dataset.shelfFilter; renderShelf([...savedSeries.values()]); }));
 loadShelf();
-
-for (const provider of mediaPathGroups.filter(item => item.root !== 'Baidu')) {
-  for (const [folder,label,kind] of [['00影','电影','movie'], ['00剧','剧集','tv'], ['00漫','动漫','tv']]) {
-    const button = document.createElement('button'); button.className = 'mini-button'; button.type = 'button'; button.textContent = `${provider.label} · ${label}`;
-    button.addEventListener('click', async () => {
-      const host = $('#scout-directory-items'); button.disabled = true; host.textContent = '正在读取此目录…';
-      try {
-        const data = await api('/api/library/directories?path=' + encodeURIComponent(`/${provider.root}/@scout/${folder}`));
-        const categoryNames = new Set(['01国','01外','01中','01美','01欧','01日','01台','01英','01韩','02其他','总其他']);
-        const items = sortDirectories(data.directories).filter(item => !categoryNames.has(item.name)).map(item => ({...item, provider:provider.root, kind}));
-        host.replaceChildren();
-        const heading = document.createElement('p'); heading.className = 'meta'; heading.textContent = `${provider.label} / ${folder} · ${items.length} 个直收作品目录（不将地区分类当作品）`; host.append(heading);
-        if (items.length) { const all = document.createElement('button'); all.type = 'button'; all.className = 'mini-button'; all.textContent = '加入本目录（最多 30 项）'; all.onclick = () => addNamerItems(items); host.append(all); }
-        for (const item of items) {
-          const row = document.createElement('label'); row.className = 'preset-work';
-          const check = document.createElement('input'); check.type = 'checkbox'; check.className = 'preset-work-check'; check.dataset.path = item.path; check.checked = namerQueue.has(item.path);
-          check.onchange = () => { if (check.checked) addNamerItems([item]); else { namerQueue.delete(item.path); updateNamerQueue(); } };
-          const name = document.createElement('span'); name.textContent = item.name; row.append(check, name); host.append(row);
-        }
-        if (!items.length) host.append(document.createTextNode('此目录暂无作品；尚未转存时为空属正常。'));
-      } catch (error) { host.textContent = `目录暂不可用：${error.message}。可在巡影确认目录设置后重试。`; }
-      finally { button.disabled = false; }
-    }); $('#scout-roots').append(button);
-  }
-}

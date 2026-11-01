@@ -50,6 +50,8 @@ assert.match(element('#watched-feedback').textContent,/今天/);
 element('#watched-cancel').listeners.click();
 assert.equal(element('#watched-dialog').open,false);
 assert.equal(context.location.hash, 'namer', 'Old Emby bookmark falls back to Namer');
+assert.equal(element('#page-title').textContent, 'AveCove Namer');
+assert.doesNotMatch(fs.readFileSync(new URL('../src/avecove_namer/web/index.html', import.meta.url), 'utf8'), /scout-workbench|巡影收录目录|AveCove Media Tools/);
 element('#mobile-menu').listeners.click();
 assert.equal(element('#mobile-menu').getAttribute('aria-expanded'),'true');
 assert.equal(element('#nav-scrim').hidden,false);

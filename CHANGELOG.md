@@ -1,5 +1,12 @@
 # Changelog / 更新记录
 
+## 0.7.1 — 2026-11-01
+
+- Unify the browser title, workspace brand and health service identity as **AveCove Namer**.
+- Remove Scout directory browsing and private alias mappings; old `@scout` paths fail explicitly instead of silently targeting normal folders.
+- Retain existing LitePan/Vesta detection and the independent acquisition-notification inbox.
+- 统一应用名称为 AveCove Namer；移除巡影专属接入，不影响正常媒体库及批量改名。
+
 ## 0.7.0 — 2026-11-01
 
 - Add a local completed-acquisition notification CLI and durable inbox, with version-aware deduplication and stale-ack protection. No public write webhook or cloud mutation is introduced.
