@@ -24,6 +24,10 @@ const element = selector => {
   return nodes.get(selector);
 };
 const calls = [];
+const mobileStyles = fs.readFileSync(new URL('../src/avecove_namer/web/styles.css',import.meta.url),'utf8');
+assert.match(mobileStyles,/\.search-item,\.event-item \{ grid-template-columns:minmax\(0,1fr\)/);
+assert.match(mobileStyles,/\.search-item > \.actions \{ display:grid; grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+assert.match(mobileStyles,/\.search-item > \.actions > \.shelf-actions \{ grid-column:1\/-1/);
 let episodeResponse = async () => ({code:'S01E02', name:'The Kingsroad', translated_name:'国王大道', overview:'中文简介', original_language:'en', detail_url:'https://www.themoviedb.org/tv/1399/season/1/episode/2'});
 const artworkData = {tmdb_id:1399,title:'权力的游戏',original_name:'Game of Thrones',original_language:'en',year:'2011',recommended_name:'Game of Thrones (2011)',overview:'简介',season:null,seasons:[{number:1,episode_count:10}],episodes:[],warnings:[],posters:[],backdrops:[],stills:[],detail_url:'https://www.themoviedb.org/tv/1399'};
 let artworkResponse = async () => ({data:artworkData});

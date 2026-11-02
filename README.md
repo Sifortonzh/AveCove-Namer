@@ -4,7 +4,9 @@ Reviewable cloud media naming, original-language TMDb metadata, and a personal s
 
 [简体中文](README.zh-CN.md) · [Release workflow](docs/releases.md) · [Changelog](CHANGELOG.md)
 
-## Current release: 0.7.3
+## Current release: 0.7.4
+
+- **Mobile query layout:** titles and directory names use a full-width information row; actions wrap into a two-column grid, with an independent three-state row. Episode/source actions also reflow without squeezing text vertically.
 
 - **Consistent watch marks:** 🌟 Favorite, 👀 Watching and ✅ Watched share one state renderer across search, details and saved cards. Inactive marks are muted; text, accessible labels and independent persisted flags remain available. Root-domain and legacy `/media-tools/` access reuse the same backend and LitePan settings.
 

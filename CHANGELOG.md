@@ -1,5 +1,11 @@
 # Changelog / 更新记录
 
+## 0.7.4 — 2026-11-02
+
+- Fix narrow search results: full-width metadata followed by two-column actions and a separate three-state row. Long source names wrap horizontally instead of shrinking to one character per line.
+- Reflow episode/source actions and preserve 44px mobile targets; root-domain and legacy URLs share the same assets.
+- 修复手机端标题、目录名竖排与按钮挤压；保留批量操作和全部观看记录。
+
 ## 0.7.3 — 2026-11-02
 
 - Unify Favorite / Watching / Watched marks as 🌟 / 👀 / ✅ through one presentation helper across search, source and shelf cards; refresh selected labels consistently.
