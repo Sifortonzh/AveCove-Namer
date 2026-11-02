@@ -120,6 +120,7 @@ async function loadShelf() {
 const namerQueue = new Map();
 let namerBatchPlans = [];
 const basePath = location.pathname.startsWith('/media-tools') ? '/media-tools' : '';
+if (!basePath) { $('.home-link').href = 'https://banwugan.avecove.com/'; $('.home-link').textContent = '← 私人电影馆'; }
 const mediaPathGroups = [
   {label:'115', root:'115'},
   {label:'光鸭', root:'GuangYa'},
