@@ -23,12 +23,21 @@ function openWatchedDate(id) {
   $('#watched-dialog').showModal(); $('#watched-date').focus();
 }
 function episodeCopyTitle(number, title) { return `E${String(Number(number)).padStart(2, '0')}: ${title || ''}`; }
+const shelfStatusTypes = {favorite:{icon:'🌟',label:'收藏'},watching:{icon:'👀',label:'在看'},watched:{icon:'✅',label:'已看'}};
+function paintShelfStatus(button, action, enabled, title = '') {
+  const status = shelfStatusTypes[action]; if (!status) return;
+  button.classList.add('shelf-state');
+  button.textContent = `${status.icon}${button.dataset.compact === 'true' ? '' : ' ' + status.label}`;
+  button.setAttribute('aria-pressed', String(!!enabled));
+  button.setAttribute('aria-label', `${enabled ? '取消' : '标记'}${status.label}${title ? '：' + title : ''}`);
+  button.title = `${status.icon} ${status.label}${enabled ? ' · 已选中，点击取消' : ' · 未选中，点击标记'}`;
+}
 function shelfActions(id, title) {
   const actions = document.createElement('span'); actions.className = 'actions shelf-actions';
-  for (const [action, label] of [['favorite','⭐ 收藏'], ['watching','▶ 在看'], ['watched','✓ 已观看']]) {
+  for (const action of Object.keys(shelfStatusTypes)) {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'mini-button';
     button.dataset.shelfId = String(id); button.dataset.shelfAction = action;
-    button.textContent = label; button.setAttribute('aria-pressed', String(!!savedSeries.get(String(id))?.[action]));
+    paintShelfStatus(button, action, savedSeries.get(String(id))?.[action], title);
     button.addEventListener('click', async () => {
       button.disabled = true;
       try {
@@ -77,9 +86,7 @@ function renderShelf(items) {
     const progress = document.createElement('p'); progress.className = 'shelf-progress'; progress.textContent = `${item.watched ? '已观看' + (item.watching ? ' · 重看中' : '') : item.watching ? '在看' : '已收藏'}${item.season !== undefined ? ` · 上次查询 S${String(item.season).padStart(2,'0')}E${String(item.episode).padStart(2,'0')}` : ' · 点封面查询单集'}`;
     const actions = document.createElement('div'); actions.className = 'shelf-quick-actions';
     const quick = shelfActions(item.id, name);
-    const favorite = quick.querySelector('[data-shelf-action="favorite"]'); favorite.classList.add('shelf-star'); favorite.textContent = item.favorite ? '★' : '☆'; favorite.setAttribute('aria-label', `${item.favorite ? '取消收藏' : '收藏'} ${name}`); favorite.title = favorite.getAttribute('aria-label');
-    const watching = quick.querySelector('[data-shelf-action="watching"]'); watching.textContent = item.watching ? '在看中' : '设为在看';
-    const watched = quick.querySelector('[data-shelf-action="watched"]'); watched.textContent = item.watched ? '✓ 已看' : '标记已看';
+    const favorite = quick.querySelector('[data-shelf-action="favorite"]'); favorite.classList.add('shelf-star'); favorite.dataset.compact = 'true'; paintShelfStatus(favorite,'favorite',item.favorite,name);
     quick.removeChild(favorite); actions.append(quick);
     const source = document.createElement('button'); source.type = 'button'; source.className = 'mini-button'; source.textContent = '源数据'; source.onclick = () => loadSource(item.id); actions.append(source);
     content.append(title, translated, meta, genre, counts, progress);
@@ -102,7 +109,7 @@ function renderShelf(items) {
       timelineGroup.append(card);
     } else host.append(card);
   }
-  $$('[data-shelf-id]').forEach(button => button.setAttribute('aria-pressed', String(!!savedSeries.get(button.dataset.shelfId)?.[button.dataset.shelfAction])));
+  $$('[data-shelf-id]').forEach(button => { const item = savedSeries.get(button.dataset.shelfId); paintShelfStatus(button,button.dataset.shelfAction,item?.[button.dataset.shelfAction],item?.originalTitle || item?.title || ''); });
 }
 function scheduleShelfRefresh() { clearTimeout(shelfRefreshTimer); shelfRefreshTimer = setTimeout(loadShelf, 1500); }
 async function loadShelf() {

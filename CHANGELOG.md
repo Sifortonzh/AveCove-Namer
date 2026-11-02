@@ -1,5 +1,11 @@
 # Changelog / 更新记录
 
+## 0.7.3 — 2026-11-02
+
+- Unify Favorite / Watching / Watched marks as 🌟 / 👀 / ✅ through one presentation helper across search, source and shelf cards; refresh selected labels consistently.
+- Muted inactive marks, keyboard labels and larger mobile targets preserve independent flags, dates and progress without a data migration.
+- 统一观看状态图标及未选中淡化，保留现有 LitePan 协作、原地址与所有观看记录；独立域名接入复用现有服务。
+
 ## 0.7.2 — 2026-11-01
 
 - Add a shared TV facts contract for season totals, per-season episode counts, genres, series type and region-specific content classifications. Specials are separate; unknown data remains explicitly unknown.

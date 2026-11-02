@@ -492,3 +492,9 @@ html[data-scene="night"] .saved-shows { --shelf-purple:#c0abff; --shelf-veil:#17
   .home-link { display:flex; align-items:center; font-size:11px; white-space:nowrap; }
 }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; transition:none!important; animation:none!important; } }
+.shelf-state { min-height:40px; transition:background .15s ease,opacity .15s ease; }
+.shelf-state[aria-pressed="false"] { background:var(--surface-2); filter:grayscale(1); opacity:.64; }
+.shelf-state[aria-pressed="true"] { filter:none; opacity:1; background:color-mix(in srgb,var(--shelf-purple,#7250ce) 12%,var(--surface)); }
+.shelf-state:hover,.shelf-state:focus-visible { opacity:1; }
+.shelf-state.shelf-star { min-width:40px; min-height:40px; font-size:22px; }
+@media(pointer:coarse) { .shelf-state { min-height:44px; min-width:44px; } }

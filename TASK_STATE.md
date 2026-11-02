@@ -1,5 +1,11 @@
 # Namer 2026-11-01 update
 
+## 2026-11-02 in progress: 0.7.3
+
+- Shared status renderer: favorite 🌟, watching 👀, watched ✅; muted inactive marks, accessible labels, mobile targets; no shelf migration or cloud mutations.
+- Existing online revision verified as 4757f4e, activeJobs=0 at start. Root-domain routing already supported by app; namer.avecove.com is approved, should point to ali-m2 47.120.61.12, same backend and LitePan configuration. DNS/certificate/public access must be verified live.
+- Pending: full tests, exact-commit publisher, CI and independent HTTPS endpoint. Do not claim deployed until public revision matches.
+
 ## Current delivery: 0.7.2 TV facts
 
 - Scope: season count/per-season episodes, genres, TMDb series type and regional content ratings. Shared by search summaries, artwork/source views and saved-series cards.

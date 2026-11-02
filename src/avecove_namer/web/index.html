@@ -13,7 +13,7 @@
       document.documentElement.dataset.scene = hour < 5 || hour >= 21 ? 'night' : hour < 11 ? 'morning' : hour < 17 ? 'day' : 'evening';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=0.7.2">
+  <link rel="stylesheet" href="styles.css?v=0.7.3">
 </head>
 <body>
   <div class="shell">
@@ -60,9 +60,9 @@
           <div class="result-toolbar"><div><span class="page-kicker">YOUR SERIES</span><h3>我的剧集 <small id="shelf-count"></small></h3></div><button type="button" class="mini-button" id="shelf-reload">↻ 刷新</button></div>
           <div class="shelf-filters" role="group" aria-label="筛选剧集与观看时间线">
             <button type="button" class="mini-button" data-shelf-filter="all" aria-pressed="true">全部</button>
-            <button type="button" class="mini-button" data-shelf-filter="watching" aria-pressed="false">在看</button>
-            <button type="button" class="mini-button" data-shelf-filter="favorite" aria-pressed="false">收藏</button>
-            <button type="button" class="mini-button" data-shelf-filter="watched" aria-pressed="false">已观看 · 时间线</button>
+            <button type="button" class="mini-button" data-shelf-filter="watching" aria-pressed="false">👀 在看</button>
+            <button type="button" class="mini-button" data-shelf-filter="favorite" aria-pressed="false">🌟 收藏</button>
+            <button type="button" class="mini-button" data-shelf-filter="watched" aria-pressed="false">✅ 已看 · 时间线</button>
           </div>
           <div id="series-shelf-list" aria-live="polite">正在读取…</div>
           <p class="shelf-credit">海报与剧照来自 TMDb · 已观看按完成日期倒序排列，日期可修改；这是你标记的观看记录，不代表剧集已完结。</p>
@@ -131,6 +131,6 @@
     </form>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=0.7.2" defer></script>
+  <script src="app.js?v=0.7.3" defer></script>
 </body>
 </html>

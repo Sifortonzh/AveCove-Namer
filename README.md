@@ -4,7 +4,9 @@ Reviewable cloud media naming, original-language TMDb metadata, and a personal s
 
 [简体中文](README.zh-CN.md) · [Release workflow](docs/releases.md) · [Changelog](CHANGELOG.md)
 
-## Current release: 0.7.2
+## Current release: 0.7.3
+
+- **Consistent watch marks:** 🌟 Favorite, 👀 Watching and ✅ Watched share one state renderer across search, details and saved cards. Inactive marks are muted; text, accessible labels and independent persisted flags remain available. Root-domain and legacy `/media-tools/` access reuse the same backend and LitePan settings.
 
 - **TV facts:** query cards and source details show season/episode distributions, genres, TMDb series type and region-labeled content ratings. Specials stay separate; missing data is never presented as zero or all-ages. The first search match loads one summary request; other matches load on expansion, without image/episode traversal. Shelf cards reuse the same facts.
 

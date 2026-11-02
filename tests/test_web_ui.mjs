@@ -40,6 +40,16 @@ const context = vm.createContext({
   },
 });
 vm.runInContext(fs.readFileSync(new URL('../src/avecove_namer/web/app.js', import.meta.url), 'utf8'), context);
+for (const [action,icon] of [['favorite','🌟'],['watching','👀'],['watched','✅']]) {
+  const button = new Element(); context.statusTestButton = button;
+  vm.runInContext(`paintShelfStatus(statusTestButton, '${action}', false, 'Example')`, context);
+  assert.ok(button.textContent.startsWith(icon)); assert.equal(button.getAttribute('aria-pressed'),'false');
+  assert.match(button.getAttribute('aria-label'),/标记.*Example/);
+  button.dataset.compact='true';
+  vm.runInContext(`paintShelfStatus(statusTestButton, '${action}', true, 'Example')`, context);
+  assert.equal(button.textContent,icon); assert.equal(button.getAttribute('aria-pressed'),'true');
+  assert.match(button.getAttribute('aria-label'),/取消.*Example/);
+}
 assert.deepEqual(JSON.parse(vm.runInContext('JSON.stringify(watchedShelfItems([{id:"1",watched:true,watchedDate:"2025-01-01",updatedAt:999},{id:"2",watched:true,watchedDate:"2025-02-01"},{id:"3",watching:true}]).map(x=>x.id))',context)), ['2','1']);
 vm.runInContext('savedSeries = new Map([["1",{id:"1",watched:true,watchedDate:"2025-01-01",title:"Test series"}]]) ; openWatchedDate("1")',context);
 assert.equal(element('#watched-dialog').open,true);
