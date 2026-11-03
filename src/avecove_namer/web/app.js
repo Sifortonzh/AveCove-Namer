@@ -7,20 +7,60 @@ let savedSeries = new Map();
 let shelfFilter = 'all';
 let shelfRefreshTimer;
 let watchedEditingId = null;
+let watchedEditingTitle = '';
+let watchedDialogVersion = 0;
 function watchDateToday() { return new Date(Date.now() + 8 * 3600000).toISOString().slice(0,10); }
 function watchedShelfItems(items) {
-  return items.filter(item => item.watched).sort((a,b) =>
+  return items.flatMap(item => [
+    ...(item.watched ? [{...item, completedSeason:null}] : []),
+    ...Object.entries(item.seasonCompletions || {}).map(([season,record]) => ({...item,...record,completedSeason:Number(season)})),
+  ]).sort((a,b) =>
     String(b.watchedDate || '').localeCompare(String(a.watchedDate || '')) ||
     (b.watchedRecordedAt || 0) - (a.watchedRecordedAt || 0) || String(a.id).localeCompare(String(b.id)));
 }
-function openWatchedDate(id) {
-  const item = savedSeries.get(String(id)); if (!item?.watched) return;
-  watchedEditingId = String(id);
-  $('#watched-series').textContent = item.originalTitle || item.title || `TMDb ${id}`;
-  $('#watched-date').max = watchDateToday();
-  $('#watched-date').value = item.watchedDate || watchDateToday();
+function completionLabel(season) { return season == null ? '全剧' : season === 0 ? '特别篇' : `第 ${season} 季`; }
+function watchRecord(id, scope) {
+  const item = savedSeries.get(String(id));
+  return scope === '' ? (item?.watched ? item : null) : item?.seasonCompletions?.[scope];
+}
+function fillWatchRecord() {
+  const record = watchRecord(watchedEditingId, $('#watched-scope').value);
+  $('#watched-date').value = record?.watchedDate || watchDateToday();
+  $('#watched-stars').value = String(record?.personalStars || '');
+  $('#watched-remove').hidden = !record;
   $('#watched-feedback').textContent = '';
+}
+function openWatchedDate(id, title = '', season = undefined) {
+  const item = savedSeries.get(String(id));
+  watchedEditingId = String(id);
+  watchedEditingTitle = item?.originalTitle || item?.title || title || `TMDb ${id}`;
+  const version = ++watchedDialogVersion;
+  $('#watched-series').textContent = watchedEditingTitle;
+  $('#watched-date').max = watchDateToday();
+  const scope = $('#watched-scope');
+  const options = (seasons, selected) => {
+    const known = new Set([...seasons.map(s=>s.number), ...Object.keys(item?.seasonCompletions || {}).map(Number)]);
+    if (selected !== '') known.add(Number(selected));
+    scope.replaceChildren();
+    for (const value of ['', ...[...known].filter(n=>Number.isInteger(n)&&n>=0).sort((a,b)=>a-b).map(String)]) {
+      const option = document.createElement('option'); option.value = value;
+      option.textContent = completionLabel(value === '' ? null : Number(value)); scope.append(option);
+    }
+    scope.value = selected;
+  };
+  if (season === undefined && !item?.watched) {
+    const recent = watchedShelfItems(item ? [item] : [])[0];
+    season = recent?.completedSeason;
+  }
+  options(item?.seasons || [], season == null ? '' : String(season)); fillWatchRecord();
+  const hint = $('#watched-scope-note');
+  hint.textContent = item?.seasons?.length ? '每季独立记录，不会替代全剧记录。' : '正在读取 TMDb 季列表…';
   $('#watched-dialog').showModal(); $('#watched-date').focus();
+  if (!item?.seasons?.length) getSeriesSummary(String(id)).then(data => {
+    if (version !== watchedDialogVersion || !$('#watched-dialog').open) return;
+    options(data.seasons || [], scope.value);
+    hint.textContent = data.seasons?.length ? '每季独立记录，不会替代全剧记录。' : 'TMDb 暂无分季资料，可以记录全剧。';
+  }).catch(()=>{if(version===watchedDialogVersion&&$('#watched-dialog').open)hint.textContent='暂时无法读取 TMDb 季列表，仍可保存全剧或编辑已有记录。'});
 }
 function episodeCopyTitle(number, title) { return `E${String(Number(number)).padStart(2, '0')}: ${title || ''}`; }
 const shelfStatusTypes = {favorite:{icon:'🌟',label:'收藏'},watching:{icon:'👀',label:'在看'},watched:{icon:'✅',label:'已看'}};
@@ -29,22 +69,23 @@ function paintShelfStatus(button, action, enabled, title = '') {
   button.classList.add('shelf-state');
   button.textContent = `${status.icon}${button.dataset.compact === 'true' ? '' : ' ' + status.label}`;
   button.setAttribute('aria-pressed', String(!!enabled));
-  button.setAttribute('aria-label', `${enabled ? '取消' : '标记'}${status.label}${title ? '：' + title : ''}`);
-  button.title = `${status.icon} ${status.label}${enabled ? ' · 已选中，点击取消' : ' · 未选中，点击标记'}`;
+  button.setAttribute('aria-label', `${enabled ? (action==='watched'?'编辑':'取消') : '标记'}${status.label}${title ? '：' + title : ''}`);
+  button.title = action==='watched'?'记录完看日期与个人评分':`${status.icon} ${status.label}${enabled ? ' · 已选中，点击取消' : ' · 未选中，点击标记'}`;
 }
 function shelfActions(id, title) {
   const actions = document.createElement('span'); actions.className = 'actions shelf-actions';
   for (const action of Object.keys(shelfStatusTypes)) {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'mini-button';
     button.dataset.shelfId = String(id); button.dataset.shelfAction = action;
-    paintShelfStatus(button, action, savedSeries.get(String(id))?.[action], title);
+    const saved = savedSeries.get(String(id));
+    paintShelfStatus(button, action, saved?.[action] || (action==='watched'&&Object.keys(saved?.seasonCompletions || {}).length), title);
     button.addEventListener('click', async () => {
+      if (action === 'watched') { openWatchedDate(id, title); return; }
       button.disabled = true;
       try {
         const enabled = !savedSeries.get(String(id))?.[action];
         const data = await api('/api/tmdb/shelf', {id:String(id), title, action, enabled});
         renderShelf(data.items); if (data.artwork_pending) scheduleShelfRefresh();
-        if (action === 'watched') toast(enabled ? '✓ 已记入今日观看时间线，可在卡片上修改日期' : '已取消观看标记');
       }
       catch (error) { toast(error.message, true); } finally { button.disabled = false; }
     }); actions.append(button);
@@ -57,7 +98,7 @@ function renderShelf(items) {
   const timeline = shelfFilter === 'watched';
   const visible = timeline ? watchedShelfItems(items) : items.filter(item => shelfFilter === 'all' || item[shelfFilter]);
   host.classList.toggle('shelf-timeline', timeline);
-  $('#shelf-count').textContent = `${visible.length} / ${items.length}`;
+  $('#shelf-count').textContent = timeline ? `${visible.length} 条记录` : `${visible.length} / ${items.length}`;
   $$('[data-shelf-filter]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.shelfFilter === shelfFilter)));
   if (!visible.length) {
     const empty = document.createElement('p'); empty.className = 'shelf-empty';
@@ -83,17 +124,21 @@ function renderShelf(items) {
     const meta = document.createElement('p'); meta.className = 'shelf-meta'; meta.textContent = [item.year, item.rating > 0 ? `TMDb ${Number(item.rating).toFixed(1)}` : '', item.certification ? `${item.certificationCountry || '地区未标注'} · ${item.certification}` : '暂无内容分级'].filter(Boolean).join(' · ');
     const genre = document.createElement('p'); genre.className = 'shelf-genre'; genre.textContent = `类型：${(item.genres || []).join(' · ') || 'TMDb 暂未提供'}${item.series_type ? ` · ${item.series_type}` : ''}`;
     const counts = document.createElement('p'); counts.className = 'shelf-genre'; counts.textContent = `${Number.isInteger(item.season_count) ? `${item.season_count} 季` : '季数待补充'}${Number.isInteger(item.episode_count) ? ` · 正式集 ${item.episode_count} 集` : ''}${item.has_specials ? ' · 另含特别篇' : ''}`;
-    const progress = document.createElement('p'); progress.className = 'shelf-progress'; progress.textContent = `${item.watched ? '已观看' + (item.watching ? ' · 重看中' : '') : item.watching ? '在看' : '已收藏'}${item.season !== undefined ? ` · 上次查询 S${String(item.season).padStart(2,'0')}E${String(item.episode).padStart(2,'0')}` : ' · 点封面查询单集'}`;
+    const progress = document.createElement('p'); progress.className = 'shelf-progress'; progress.textContent = `${timeline ? completionLabel(item.completedSeason)+'已看' : item.watched ? '全剧已看' + (item.watching ? ' · 重看中' : '') : item.watching ? '在看' : Object.keys(item.seasonCompletions || {}).length ? '已有分季完看记录' : '已收藏'}${!timeline&&item.season !== undefined ? ` · 上次查询 S${String(item.season).padStart(2,'0')}E${String(item.episode).padStart(2,'0')}` : ''}`;
     const actions = document.createElement('div'); actions.className = 'shelf-quick-actions';
     const quick = shelfActions(item.id, name);
     const favorite = quick.querySelector('[data-shelf-action="favorite"]'); favorite.classList.add('shelf-star'); favorite.dataset.compact = 'true'; paintShelfStatus(favorite,'favorite',item.favorite,name);
     quick.removeChild(favorite); actions.append(quick);
     const source = document.createElement('button'); source.type = 'button'; source.className = 'mini-button'; source.textContent = '源数据'; source.onclick = () => loadSource(item.id); actions.append(source);
     content.append(title, translated, meta, genre, counts, progress);
-    if (item.watched) {
+    if (timeline || item.watched || Object.keys(item.seasonCompletions || {}).length) {
       const date = document.createElement('button'); date.type = 'button'; date.className = 'shelf-watched-date';
-      date.textContent = `📅 ${item.watchedDate || '补充日期'} · 修改`; date.setAttribute('aria-label',`修改 ${name} 的观看日期`);
-      date.onclick = () => openWatchedDate(item.id); content.append(date);
+      const firstSeason = Object.keys(item.seasonCompletions || {})[0];
+      const season = timeline ? item.completedSeason : item.watched || firstSeason === undefined ? null : Number(firstSeason);
+      const record = timeline ? item : watchRecord(item.id, season == null ? '' : String(season));
+      date.textContent = `📅 ${completionLabel(season)} · ${record?.watchedDate || '补充日期'}${record?.personalStars ? ` · 个人 ${record.personalStars}★` : ''}`;
+      date.setAttribute('aria-label',`编辑 ${name} ${completionLabel(season)}的观看日期和评分`);
+      date.onclick = () => openWatchedDate(item.id, name, season); content.append(date);
     }
     content.append(actions); card.append(poster, content, favorite);
     if (timeline) {
@@ -109,7 +154,7 @@ function renderShelf(items) {
       timelineGroup.append(card);
     } else host.append(card);
   }
-  $$('[data-shelf-id]').forEach(button => { const item = savedSeries.get(button.dataset.shelfId); paintShelfStatus(button,button.dataset.shelfAction,item?.[button.dataset.shelfAction],item?.originalTitle || item?.title || ''); });
+  $$('[data-shelf-id]').forEach(button => { const item = savedSeries.get(button.dataset.shelfId), action = button.dataset.shelfAction; paintShelfStatus(button,action,item?.[action] || (action==='watched'&&Object.keys(item?.seasonCompletions || {}).length),item?.originalTitle || item?.title || ''); });
 }
 function scheduleShelfRefresh() { clearTimeout(shelfRefreshTimer); shelfRefreshTimer = setTimeout(loadShelf, 1500); }
 async function loadShelf() {
@@ -269,15 +314,18 @@ function seriesInfoMarkup(data) {
 }
 
 const summaryRequests = new Map();
+function getSeriesSummary(id) {
+  if (!summaryRequests.has(id)) summaryRequests.set(id, api('/api/tmdb/summary', {tmdb_id:id}).catch(error=>{summaryRequests.delete(id);throw error}));
+  return summaryRequests.get(id);
+}
 async function loadSeriesSummary(id, host) {
   host.textContent = '正在读取季集、类型与内容分级…';
   host.setAttribute('aria-busy', 'true');
   try {
-    if (!summaryRequests.has(id)) summaryRequests.set(id, api('/api/tmdb/summary', {tmdb_id:id}));
-    const data = await summaryRequests.get(id);
+    const data = await getSeriesSummary(id);
     host.innerHTML = seriesInfoMarkup(data);
   } catch (error) {
-    summaryRequests.delete(id); host.replaceChildren();
+    host.replaceChildren();
     const message = document.createElement('p'); message.className = 'meta'; message.textContent = error.message;
     const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'mini-button'; retry.textContent = '↻ 重试剧集资料'; retry.onclick = () => loadSeriesSummary(id, host);
     host.append(message, retry);
@@ -958,20 +1006,32 @@ $('#namer-utilities').addEventListener('toggle', () => {
 });
 $('#shelf-reload').addEventListener('click', loadShelf);
 $('#watched-cancel').addEventListener('click', () => $('#watched-dialog').close());
-$('#watched-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  const item = savedSeries.get(watchedEditingId); if (!item?.watched) return;
+$('#watched-scope').addEventListener('change', fillWatchRecord);
+let watchSaving = false;
+async function saveWatchRecord(enabled) {
+  if (!watchedEditingId || watchSaving) return;
+  const scope = $('#watched-scope').value;
   const day = $('#watched-date').value;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day > watchDateToday() || day < '1900-01-01') {
+  if (enabled && (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day > watchDateToday() || day < '1900-01-01')) {
     $('#watched-feedback').textContent = '请选择 1900 年至今天之间的有效日期'; return;
   }
-  $('#watched-save').disabled = true;
+  const version = watchedDialogVersion;
+  const payload = {id:watchedEditingId,title:watchedEditingTitle,action:'watched',enabled,seasonNumber:scope===''?null:Number(scope)};
+  if (enabled) Object.assign(payload,{watchedDate:day,personalStars:$('#watched-stars').value===''?null:Number($('#watched-stars').value)});
+  watchSaving = true;
+  $('#watched-save').disabled = $('#watched-remove').disabled = true;
   try {
-    const data = await api('/api/tmdb/shelf', {id:watchedEditingId,action:'watched',enabled:true,watchedDate:day});
+    const data = await api('/api/tmdb/shelf', payload);
     renderShelf(data.items); if (data.artwork_pending) scheduleShelfRefresh();
-    $('#watched-dialog').close(); toast('✓ 观看日期已保存，时间线已重新排列');
-  } catch (error) { $('#watched-feedback').textContent = error.message; }
-  finally { $('#watched-save').disabled = false; }
+    if (version === watchedDialogVersion && $('#watched-dialog').open) $('#watched-dialog').close();
+    toast(enabled ? '✓ 完看日期与评分已保存' : '已移除这条完看记录');
+  } catch (error) { if (version === watchedDialogVersion) $('#watched-feedback').textContent = error.message; }
+  finally { watchSaving = false; $('#watched-save').disabled = $('#watched-remove').disabled = false; }
+}
+$('#watched-form').addEventListener('submit', event => {event.preventDefault();return saveWatchRecord(true)});
+$('#watched-remove').addEventListener('click', () => {
+  const scope=$('#watched-scope').value;
+  if (watchRecord(watchedEditingId,scope) && confirm(`🗑 移除「${completionLabel(scope===''?null:Number(scope))}」的完看日期和评分？其他季与收藏不受影响。`)) return saveWatchRecord(false);
 });
 $$('[data-shelf-filter]').forEach(button => button.addEventListener('click', () => { shelfFilter = button.dataset.shelfFilter; renderShelf([...savedSeries.values()]); }));
 loadShelf();

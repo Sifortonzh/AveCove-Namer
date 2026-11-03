@@ -5,6 +5,32 @@ from avecove_namer.shelf import SeriesShelf
 
 
 class ShelfTests(unittest.TestCase):
+    def test_season_completions_are_independent_and_persistent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'shelf.json'
+            shelf = SeriesShelf(path)
+            shelf.request({'id':'1399','action':'watching','enabled':True})
+            completion = {'id':'1399','action':'watched','enabled':True}
+            first = shelf.request({**completion,'seasonNumber':1,'watchedDate':'2025-01-02','personalStars':5})['items'][0]
+            self.assertTrue(first['watching'])
+            self.assertFalse(first.get('watched', False))
+            shelf.request({**completion,'seasonNumber':2,'watchedDate':'2025-03-02','personalStars':4})
+            shelf.request({**completion,'watchedDate':'2025-02-02'})
+            shelf = SeriesShelf(path)
+            def timeline():
+                return [(row['completedSeason'],row['personalStars']) for row in shelf.request()['timeline']]
+            self.assertEqual(timeline(), [(2,4),(None,None),(1,5)])
+            shelf.request({**completion,'seasonNumber':1,'watchedDate':'2025-04-02'})
+            self.assertEqual(timeline(), [(1,5),(2,4),(None,None)])
+            shelf.request({**completion,'seasonNumber':2,'personalStars':None})
+            shelf.request({**completion,'seasonNumber':1,'enabled':False})
+            self.assertEqual(timeline(), [(2,None),(None,None)])
+            original = path.read_text()
+            for bad in ({'seasonNumber':True}, {'seasonNumber':-1}, {'personalStars':6}, {'personalStars':False}, {'personalStars':2.5}):
+                with self.assertRaises(ValueError):
+                    shelf.request({**completion,**bad})
+                self.assertEqual(path.read_text(), original)
+
     def test_watched_persists_date_progress_and_rewatch(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'shelf.json'

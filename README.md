@@ -4,7 +4,9 @@ Reviewable cloud media naming, original-language TMDb metadata, and a personal s
 
 [简体中文](README.zh-CN.md) · [Release workflow](docs/releases.md) · [Changelog](CHANGELOG.md)
 
-## Current release: 0.7.4
+## Current release: 0.7.5
+
+- **Watch timeline:** select ✅ Watched to record a whole series or a TMDb season, set its completion date and optionally give it 1–5 personal stars. Existing records remain intact; entries sort by completion date.
 
 - **Mobile query layout:** titles and directory names use a full-width information row; actions wrap into a two-column grid, with an independent three-state row. Episode/source actions also reflow without squeezing text vertically.
 

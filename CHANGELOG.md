@@ -1,5 +1,9 @@
 # Changelog / 更新记录
 
+## 0.7.5 — 2026-11-03
+
+- Record personal stars and completion dates separately for a whole series and each season, including specials. Edit or remove one record from the watch timeline without affecting the others.
+
 ## 0.7.4 — 2026-11-02
 
 - Fix narrow search results: full-width metadata followed by two-column actions and a separate three-state row. Long source names wrap horizontally instead of shrinking to one character per line.

@@ -9,7 +9,7 @@ class Element {
   addEventListener(name, callback) { this.listeners[name] = callback; }
   querySelectorAll() { return []; }
   querySelector() { return new Element(); }
-  replaceChildren() { this.innerHTML = ''; }
+  replaceChildren() { this.innerHTML = ''; this.children = []; }
   insertAdjacentHTML(position, html) { this.innerHTML += html; }
   showModal() { this.open = true; }
   close() { this.open = false; this.listeners.close?.(); }
@@ -39,7 +39,7 @@ const context = vm.createContext({
   setTimeout:() => 1, clearTimeout() {}, setInterval() {}, console,
   fetch:async (url, options) => {
     calls.push({url, options});
-    const data = url.endsWith('/api/tmdb/summary') ? summaryData : url.endsWith('/api/tmdb/episode') ? await episodeResponse() : url.endsWith('/api/tmdb/artwork') ? await artworkResponse() : {status:'ok'};
+    const data = url.endsWith('/api/tmdb/summary') ? summaryData : url.endsWith('/api/tmdb/episode') ? await episodeResponse() : url.endsWith('/api/tmdb/artwork') ? await artworkResponse() : url.endsWith('/api/tmdb/shelf') && options?.body ? {items:[]} : {status:'ok'};
     return {ok:true, json:async () => data};
   },
 });
@@ -52,7 +52,7 @@ for (const [action,icon] of [['favorite','🌟'],['watching','👀'],['watched',
   button.dataset.compact='true';
   vm.runInContext(`paintShelfStatus(statusTestButton, '${action}', true, 'Example')`, context);
   assert.equal(button.textContent,icon); assert.equal(button.getAttribute('aria-pressed'),'true');
-  assert.match(button.getAttribute('aria-label'),/取消.*Example/);
+  assert.match(button.getAttribute('aria-label'),action==='watched'?/编辑.*Example/:/取消.*Example/);
 }
 assert.deepEqual(JSON.parse(vm.runInContext('JSON.stringify(watchedShelfItems([{id:"1",watched:true,watchedDate:"2025-01-01",updatedAt:999},{id:"2",watched:true,watchedDate:"2025-02-01"},{id:"3",watching:true}]).map(x=>x.id))',context)), ['2','1']);
 vm.runInContext('savedSeries = new Map([["1",{id:"1",watched:true,watchedDate:"2025-01-01",title:"Test series"}]]) ; openWatchedDate("1")',context);
@@ -65,6 +65,16 @@ assert.equal(calls.length,beforeInvalidDate);
 assert.match(element('#watched-feedback').textContent,/今天/);
 element('#watched-cancel').listeners.click();
 assert.equal(element('#watched-dialog').open,false);
+await vm.runInContext('openWatchedDate("99", "Test series"); getSeriesSummary("99")',context);
+assert.deepEqual(element('#watched-scope').children.map(option=>option.value),['','0','1','2']);
+element('#watched-scope').value='2';
+element('#watched-scope').listeners.change();
+element('#watched-date').value='2025-03-01';
+element('#watched-stars').value='4';
+await element('#watched-form').listeners.submit({preventDefault(){}});
+assert.deepEqual(JSON.parse(calls.at(-1).options.body), {id:'99',title:'Test series',action:'watched',enabled:true,seasonNumber:2,watchedDate:'2025-03-01',personalStars:4});
+assert.equal(element('#watched-dialog').open,false);
+assert.equal(vm.runInContext('JSON.stringify(watchedShelfItems([{id:"99",watched:true,watchedDate:"2025-02-01",seasonCompletions:{"1":{watchedDate:"2025-01-01"},"2":{watchedDate:"2025-03-01",personalStars:4}}}]).map(x=>x.completedSeason))',context),'[2,null,1]');
 assert.equal(context.location.hash, 'namer', 'Old Emby bookmark falls back to Namer');
 assert.equal(element('#page-title').textContent, 'AveCove Namer');
 assert.doesNotMatch(fs.readFileSync(new URL('../src/avecove_namer/web/index.html', import.meta.url), 'utf8'), /scout-workbench|巡影收录目录|AveCove Media Tools/);

@@ -463,7 +463,11 @@ pre { max-height: 320px; overflow: auto; padding: 14px; color: var(--code-text);
 .shelf-timeline .shelf-card { min-height:180px; }
 .watched-dialog { width:min(480px,calc(100vw - 24px)); }
 .watched-dialog input { width:100%; max-width:100%; margin-top:10px; color:var(--text); }
+.watched-dialog label { display:block; margin-top:14px; }
+.watched-dialog select { display:block; width:100%; margin-top:8px; }
 .watched-dialog-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+.watched-dialog-actions { flex-wrap:wrap; }
+.watched-dialog-actions [hidden] { display:none; }
 #watched-feedback { color:var(--bad); font-size:13px; }
 html[data-scene="night"] .saved-shows { --shelf-purple:#c0abff; --shelf-veil:#171b25; }
 @media(max-width:600px) { .saved-shows { padding:14px; } .shelf-card { padding:11px; gap:12px; min-height:144px; border-radius:14px; } .shelf-poster { flex-basis:72px; width:72px; height:108px; } .shelf-title { font-size:15px; } .shelf-info { padding-right:20px; } .shelf-star { right:7px; bottom:9px; } }

@@ -13,7 +13,7 @@
       document.documentElement.dataset.scene = hour < 5 || hour >= 21 ? 'night' : hour < 11 ? 'morning' : hour < 17 ? 'day' : 'evening';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=0.7.4">
+  <link rel="stylesheet" href="styles.css?v=0.7.5">
 </head>
 <body>
   <div class="shell">
@@ -121,16 +121,19 @@
     <div id="episode-result" aria-live="polite"></div>
   </dialog>
   <dialog id="watched-dialog" class="episode-dialog watched-dialog" aria-labelledby="watched-heading">
-    <h2 id="watched-heading">📅 观看日期</h2>
+    <h2 id="watched-heading">📅 完看记录与评分</h2>
     <p id="watched-series" class="meta"></p>
     <form id="watched-form">
-      <label><span>哪天看完这部剧？</span><input id="watched-date" type="date" min="1900-01-01" required></label>
-      <p class="meta">按你的完成日期收入时间线；之后重新设为“在看”，仍保留这条观看记录。</p>
+      <label><span>记录范围</span><select id="watched-scope"><option value="">全剧</option></select></label>
+      <p class="meta" id="watched-scope-note" aria-live="polite"></p>
+      <label><span>完看日期</span><input id="watched-date" type="date" min="1900-01-01" required></label>
+      <label><span>个人评分（选填）</span><select id="watched-stars"><option value="">暂不评分</option><option value="5">★★★★★ · 5 星</option><option value="4">★★★★☆ · 4 星</option><option value="3">★★★☆☆ · 3 星</option><option value="2">★★☆☆☆ · 2 星</option><option value="1">★☆☆☆☆ · 1 星</option></select></label>
+      <p class="meta">日期用于时间线排序；个人星级不会改变 TMDb 评分。</p>
       <p id="watched-feedback" role="status" aria-live="polite"></p>
-      <div class="watched-dialog-actions"><button class="secondary" id="watched-cancel" type="button">取消</button><button class="primary" id="watched-save" type="submit">✓ 保存观看日期</button></div>
+      <div class="watched-dialog-actions"><button class="secondary" id="watched-remove" type="button" hidden>移除此记录</button><button class="secondary" id="watched-cancel" type="button">取消</button><button class="primary" id="watched-save" type="submit">✓ 保存记录</button></div>
     </form>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=0.7.4" defer></script>
+  <script src="app.js?v=0.7.5" defer></script>
 </body>
 </html>

@@ -24,6 +24,26 @@ def watch_date(value=None):
     return parsed
 
 
+def completion_record(payload, previous):
+    day = watch_date(payload.get('watchedDate', previous.get('watchedDate')))
+    stars = payload.get('personalStars', previous.get('personalStars'))
+    if stars is not None and (type(stars) is not int or not 1 <= stars <= 5):
+        raise ValueError('个人评分须为 1 至 5 星，或留空')
+    return {'watchedDate': day.isoformat(),
+            'watchedAt': int(datetime.combine(day, datetime.min.time(), WATCH_TIMEZONE).timestamp()),
+            'watchedRecordedAt': int(time.time()), 'personalStars': stars}
+
+
+def watch_timeline(rows):
+    records = []
+    for row in rows:
+        if row.get('watched'):
+            records.append({**row, 'completedSeason': None})
+        for season, record in row.get('seasonCompletions', {}).items():
+            records.append({**row, **record, 'completedSeason': int(season)})
+    return sorted(records, key=lambda row: (-row.get('watchedAt', 0), -row.get('watchedRecordedAt', 0), row['id']))
+
+
 class SeriesShelf:
     def __init__(self, path: Path, metadata_loader=None):
         self.path = path
@@ -91,23 +111,35 @@ class SeriesShelf:
                 else:
                     if not isinstance(payload.get('enabled'), bool):
                         raise ValueError('状态必须为布尔值')
-                    row[action] = payload['enabled']
-                    if action == 'watched':
+                    season = payload.get('seasonNumber') if action == 'watched' else None
+                    if season is not None:
+                        if type(season) is not int or not 0 <= season <= 9999:
+                            raise ValueError('观看记录的季号无效')
+                        key = str(season)
+                        seasons = dict(row.get('seasonCompletions', {}))
                         if payload['enabled']:
-                            # A completion date is not the date of a later metadata refresh.
-                            day = watch_date(payload.get('watchedDate', row.get('watchedDate')))
-                            row['watchedDate'] = day.isoformat()
-                            row['watchedAt'] = int(datetime.combine(day, datetime.min.time(), WATCH_TIMEZONE).timestamp())
-                            row['watchedRecordedAt'] = int(time.time())
+                            seasons[key] = completion_record(payload, seasons.get(key, {}))
+                        else:
+                            seasons.pop(key, None)
+                        if seasons:
+                            row['seasonCompletions'] = seasons
+                        else:
+                            row.pop('seasonCompletions', None)
+                    elif action == 'watched':
+                        row['watched'] = payload['enabled']
+                        if payload['enabled']:
+                            row.update(completion_record(payload, row))
                             if not rows.get(ident, {}).get('watched'):
                                 row['watching'] = False
                         else:
-                            for key in ('watchedDate', 'watchedAt', 'watchedRecordedAt'):
+                            for key in ('watchedDate', 'watchedAt', 'watchedRecordedAt', 'personalStars'):
                                 row.pop(key, None)
+                    else:
+                        row[action] = payload['enabled']
                     title = str(payload.get('title', '')).strip()[:250]
                     if title:
                         row['title'] = title
-                if row.get('favorite') or row.get('watching') or row.get('watched'):
+                if row.get('favorite') or row.get('watching') or row.get('watched') or row.get('seasonCompletions'):
                     row['updatedAt'] = int(time.time())
                     rows[ident] = row
                 else:
@@ -119,6 +151,5 @@ class SeriesShelf:
                 self.enriching = True
                 threading.Thread(target=self.enrich, daemon=True).start()
             return {'items': sorted(rows.values(), key=lambda row: (-row.get('updatedAt', 0), row['id'])),
-                    'timeline': sorted((row for row in rows.values() if row.get('watched')),
-                                       key=lambda row: (-row.get('watchedAt', 0), -row.get('watchedRecordedAt', 0), row['id'])),
+                    'timeline': watch_timeline(rows.values()),
                     'artwork_pending': self.enriching}

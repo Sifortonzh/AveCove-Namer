@@ -1,5 +1,10 @@
 # Namer 2026-11-01 update
 
+## 2026-11-03: 0.7.5 watch timeline
+
+- Existing whole-series dates retain their storage shape; season records are optional and keyed by TMDb season number. Personal stars are separate from TMDb ratings. Timeline sorts by completion date.
+- Test Python storage and isolated UI before publishing with `scripts/publish.py --host ali-m2`; verify exact public revision and CI before handoff.
+
 ## 2026-11-02: 0.7.3 verified, 0.7.4 mobile follow-up
 
 - Shared status renderer: favorite 🌟, watching 👀, watched ✅; muted inactive marks, accessible labels, mobile targets; no shelf migration or cloud mutations.
