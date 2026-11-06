@@ -99,11 +99,18 @@ class SeriesShelf:
                 if not ident.isdecimal() or not 0 < int(ident) < 100000000:
                     raise ValueError('无效的 TMDb 剧集编号')
                 action = payload.get('action')
-                if action not in ('favorite', 'watching', 'progress', 'watched'):
+                if action not in ('favorite', 'watching', 'progress', 'watched', 'delete'):
                     raise ValueError('不支持的收藏操作')
                 row = dict(rows.get(ident, {'id': ident, 'favorite': False, 'watching': False}))
-                if action == 'progress':
-                    season, episode = int(payload.get('season', -1)), int(payload.get('episode', 0))
+                if action == 'delete':
+                    if payload.get('confirm') is not True:
+                        raise ValueError('请确认删除这部剧集的 Namer 记录')
+                    row = {}
+                elif action == 'progress':
+                    values = (payload.get('season'), payload.get('episode'))
+                    if any(isinstance(value, bool) or not str(value).isascii() or not str(value).isdecimal() for value in values):
+                        raise ValueError('季集号请填写整数')
+                    season, episode = map(int, values)
                     if not 0 <= season <= 999 or not 1 <= episode <= 9999:
                         raise ValueError('季集号无效')
                     if ident in rows:

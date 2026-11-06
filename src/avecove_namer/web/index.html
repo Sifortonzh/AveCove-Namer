@@ -13,7 +13,7 @@
       document.documentElement.dataset.scene = hour < 5 || hour >= 21 ? 'night' : hour < 11 ? 'morning' : hour < 17 ? 'day' : 'evening';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=0.7.5">
+  <link rel="stylesheet" href="styles.css?v=0.7.6">
 </head>
 <body>
   <div class="shell">
@@ -133,7 +133,20 @@
       <div class="watched-dialog-actions"><button class="secondary" id="watched-remove" type="button" hidden>移除此记录</button><button class="secondary" id="watched-cancel" type="button">取消</button><button class="primary" id="watched-save" type="submit">✓ 保存记录</button></div>
     </form>
   </dialog>
+  <dialog id="progress-dialog" class="episode-dialog" aria-labelledby="progress-heading">
+    <h2 id="progress-heading">✏️ 录入观看进度</h2>
+    <p id="progress-series" class="meta"></p>
+    <form id="progress-form" class="progress-form">
+      <div class="progress-fields">
+        <label>季号 <span>S <input id="progress-season" type="text" inputmode="numeric" pattern="[0-9]{1,3}" maxlength="3" required aria-label="观看进度季号"></span></label>
+        <label>集号 <span>E <input id="progress-episode" type="text" inputmode="numeric" pattern="[0-9]{1,4}" maxlength="4" required aria-label="观看进度集号"></span></label>
+      </div>
+      <p class="meta">只填数字；特别篇季号填 0。不改变收藏、在看、评分或已看记录。</p>
+      <p id="progress-feedback" role="status" aria-live="polite"></p>
+      <div class="watched-dialog-actions"><button type="button" id="progress-cancel" class="secondary">取消</button><button type="submit" id="progress-save" class="primary">✓ 保存进度</button></div>
+    </form>
+  </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=0.7.5" defer></script>
+  <script src="app.js?v=0.7.6" defer></script>
 </body>
 </html>

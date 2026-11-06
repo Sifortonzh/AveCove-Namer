@@ -5,6 +5,35 @@ from avecove_namer.shelf import SeriesShelf
 
 
 class ShelfTests(unittest.TestCase):
+    def test_delete_clears_only_selected_series_and_requires_confirmation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'shelf.json'
+            shelf=SeriesShelf(path)
+            for ident in ('1','2'):
+                shelf.request({'id':ident,'action':'favorite','enabled':True})
+                shelf.request({'id':ident,'action':'watched','enabled':True,'seasonNumber':1,'personalStars':5})
+                shelf.request({'id':ident,'action':'progress','season':0,'episode':2})
+            original=path.read_text()
+            with self.assertRaises(ValueError):shelf.request({'id':'1','action':'delete'})
+            self.assertEqual(path.read_text(),original)
+            result=shelf.request({'id':'1','action':'delete','confirm':True})
+            self.assertEqual([r['id'] for r in result['items']],['2'])
+            self.assertEqual([r['id'] for r in SeriesShelf(path).request()['timeline']],['2'])
+            self.assertEqual(shelf.request({'id':'1','action':'delete','confirm':True})['items'],result['items'])
+
+    def test_manual_progress_preserves_flags_and_validates_integers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'shelf.json';shelf=SeriesShelf(path)
+            shelf.request({'id':'1','action':'watched','enabled':True,'personalStars':4})
+            shelf.request({'id':'1','action':'progress','season':'00','episode':'12'})
+            row=SeriesShelf(path).request()['items'][0]
+            self.assertEqual((row['season'],row['episode'],row['personalStars']),(0,12,4))
+            self.assertTrue(row['watched'])
+            original=path.read_text()
+            for bad in (True,1.5,None,'1.2',-1):
+                with self.assertRaises(ValueError):shelf.request({'id':'1','action':'progress','season':bad,'episode':2})
+                self.assertEqual(path.read_text(),original)
+
     def test_season_completions_are_independent_and_persistent(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'shelf.json'

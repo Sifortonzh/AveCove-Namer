@@ -130,6 +130,11 @@ function renderShelf(items) {
     const favorite = quick.querySelector('[data-shelf-action="favorite"]'); favorite.classList.add('shelf-star'); favorite.dataset.compact = 'true'; paintShelfStatus(favorite,'favorite',item.favorite,name);
     quick.removeChild(favorite); actions.append(quick);
     const source = document.createElement('button'); source.type = 'button'; source.className = 'mini-button'; source.textContent = '源数据'; source.onclick = () => loadSource(item.id); actions.append(source);
+    progress.textContent = progress.textContent.replace('上次查询', '进度');
+    const editProgress = document.createElement('button'); editProgress.type = 'button'; editProgress.className = 'mini-button'; editProgress.textContent = '✏️ 录入进度'; editProgress.onclick = () => openProgressDialog(item.id);
+    const tmdbLink = document.createElement('a'); tmdbLink.className = 'mini-button'; tmdbLink.textContent = 'TMDb 详情'; tmdbLink.href = `https://www.themoviedb.org/tv/${encodeURIComponent(item.id)}`; tmdbLink.target = '_blank'; tmdbLink.rel = 'noopener noreferrer';
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'mini-button shelf-delete'; remove.textContent = '🗑 删除剧集'; remove.setAttribute('aria-label',`删除 ${name} 的 Namer 记录`); remove.onclick = async () => {remove.disabled=true;try{await deleteShelfItem(item.id)}catch(error){toast(error.message,true)}finally{remove.disabled=false}};
+    actions.append(editProgress, tmdbLink, remove);
     content.append(title, translated, meta, genre, counts, progress);
     if (timeline || item.watched || Object.keys(item.seasonCompletions || {}).length) {
       const date = document.createElement('button'); date.type = 'button'; date.className = 'shelf-watched-date';
@@ -157,6 +162,24 @@ function renderShelf(items) {
   $$('[data-shelf-id]').forEach(button => { const item = savedSeries.get(button.dataset.shelfId), action = button.dataset.shelfAction; paintShelfStatus(button,action,item?.[action] || (action==='watched'&&Object.keys(item?.seasonCompletions || {}).length),item?.originalTitle || item?.title || ''); });
 }
 function scheduleShelfRefresh() { clearTimeout(shelfRefreshTimer); shelfRefreshTimer = setTimeout(loadShelf, 1500); }
+let progressEditingId = null;
+function openProgressDialog(id) {
+  const item = savedSeries.get(String(id)); if (!item) return;
+  progressEditingId = String(id);
+  $('#progress-series').textContent = item.originalTitle || item.title || `TMDb ${id}`;
+  $('#progress-season').value = String(item.season ?? 1);
+  $('#progress-episode').value = String(item.episode ?? 1);
+  $('#progress-feedback').textContent = '';
+  $('#progress-dialog').showModal(); $('#progress-season').focus();
+}
+async function deleteShelfItem(id) {
+  const item = savedSeries.get(String(id)); if (!item) return;
+  const name = item.originalTitle || item.title || `TMDb ${id}`;
+  if (!confirm(`🗑 删除「${name}」的所有 Namer 收藏、进度、评分和完看记录？不会删除任何网盘文件。`)) return;
+  const data = await api('/api/tmdb/shelf', {id:String(id),action:'delete',confirm:true});
+  renderShelf(data.items); if (data.artwork_pending) scheduleShelfRefresh();
+  toast('✓ 已删除 Namer 记录，网盘文件未改动');
+}
 async function loadShelf() {
   clearTimeout(shelfRefreshTimer);
   try { const data = await api('/api/tmdb/shelf'); renderShelf(data.items); if (data.artwork_pending) scheduleShelfRefresh(); }
@@ -1005,6 +1028,23 @@ $('#namer-utilities').addEventListener('toggle', () => {
   if ($('#namer-utilities').open) { loadLitepanChanges(); loadHandoffInbox(); }
 });
 $('#shelf-reload').addEventListener('click', loadShelf);
+$('#progress-cancel').addEventListener('click', () => $('#progress-dialog').close());
+$('#progress-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const season = $('#progress-season').value.trim(), episode = $('#progress-episode').value.trim();
+  if (!/^\d{1,3}$/.test(season) || !/^\d{1,4}$/.test(episode) || Number(episode)<1) {
+    $('#progress-feedback').textContent = '季号请填 0–999，集号请填 1–9999 的整数'; return;
+  }
+  if ($('#progress-save').disabled || !progressEditingId) return;
+  const id=progressEditingId; $('#progress-save').disabled=true;
+  try {
+    const data=await api('/api/tmdb/shelf',{id,action:'progress',season:Number(season),episode:Number(episode)});
+    renderShelf(data.items); if(data.artwork_pending) scheduleShelfRefresh();
+    if(progressEditingId===id&&$('#progress-dialog').open)$('#progress-dialog').close();
+    toast('✓ 观看进度已保存；不会自动标记全剧已看');
+  } catch(error) { $('#progress-feedback').textContent=error.message; }
+  finally { $('#progress-save').disabled=false; }
+});
 $('#watched-cancel').addEventListener('click', () => $('#watched-dialog').close());
 $('#watched-scope').addEventListener('change', fillWatchRecord);
 let watchSaving = false;

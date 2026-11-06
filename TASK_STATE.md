@@ -1,5 +1,10 @@
 # Namer 2026-11-01 update
 
+## 2026-11-06: 0.7.6 shelf management
+
+- Latest Notes Namer section: delete shelf series, manually enter S/E progress, link TMDb details. Add confirmed delete API (shelf only), strict progress validation and responsive numeric form. Preserve watched dates/stars and unrelated rows.
+- Publish with existing guarded publisher; do not interrupt active jobs or mutate cloud folders to test.
+
 ## 2026-11-03: 0.7.5 watch timeline
 
 - Existing whole-series dates retain their storage shape; season records are optional and keyed by TMDb season number. Personal stars are separate from TMDb ratings. Timeline sorts by completion date.

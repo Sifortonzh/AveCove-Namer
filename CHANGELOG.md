@@ -1,5 +1,9 @@
 # Changelog / 更新记录
 
+## 0.7.6 — 2026-11-06
+
+- Add manual numeric season/episode progress, TMDb detail links and confirmed shelf deletion. Preserve other series and cloud resources.
+
 ## 0.7.5 — 2026-11-03
 
 - Record personal stars and completion dates separately for a whole series and each season, including specials. Edit or remove one record from the watch timeline without affecting the others.
