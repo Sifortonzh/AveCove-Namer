@@ -24,6 +24,7 @@ const element = selector => {
   return nodes.get(selector);
 };
 const calls = [];
+const pinStorage=new Map();
 const mobileStyles = fs.readFileSync(new URL('../src/avecove_namer/web/styles.css',import.meta.url),'utf8');
 assert.match(mobileStyles,/\.search-item,\.event-item \{ grid-template-columns:minmax\(0,1fr\)/);
 assert.match(mobileStyles,/\.search-item > \.actions \{ display:grid; grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
@@ -36,6 +37,7 @@ const context = vm.createContext({
   document: {querySelector:element, querySelectorAll:() => [], createElement:()=>new Element(), documentElement:{dataset:{}}},
   location: {pathname:'/media-tools/', hash:'#emby'},
   navigator: {clipboard:{writeText:async () => {}}},
+  localStorage:{getItem:key=>pinStorage.get(key)??null,setItem:(key,value)=>pinStorage.set(key,value)},
   setTimeout:() => 1, clearTimeout() {}, setInterval() {}, console,
   fetch:async (url, options) => {
     calls.push({url, options});
@@ -44,6 +46,15 @@ const context = vm.createContext({
   },
 });
 vm.runInContext(fs.readFileSync(new URL('../src/avecove_namer/web/app.js', import.meta.url), 'utf8'), context);
+assert.equal(vm.runInContext('personalStars(3)',context),'★★★');
+assert.equal(vm.runInContext('personalStars(null)',context),'');
+vm.runInContext('pinTest=pinButton("namer","/115/show",()=>{});pinTest.onclick({preventDefault(){},stopPropagation(){}})',context);
+assert.equal(vm.runInContext('pinned("namer","/115/show")',context),true);
+assert.equal(vm.runInContext('pinned("tmdb-search","/115/show")',context),false);
+assert.ok(pinStorage.get('namer-page-pins-v1').includes('/115/show'));
+assert.equal(vm.runInContext('JSON.stringify(pinOrder("namer",[{path:"/115/other"},{path:"/115/show"}],x=>x.path).map(x=>x.path))',context),'["/115/show","/115/other"]');
+vm.runInContext('pinTest.onclick({preventDefault(){},stopPropagation(){}})',context);
+assert.equal(vm.runInContext('pinned("namer","/115/show")',context),false);
 for (const [action,icon] of [['favorite','🌟'],['queued','🕒'],['watching','👀'],['watched','✅']]) {
   const button = new Element(); context.statusTestButton = button;
   vm.runInContext(`paintShelfStatus(statusTestButton, '${action}', false, 'Example')`, context);

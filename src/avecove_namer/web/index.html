@@ -13,7 +13,7 @@
       document.documentElement.dataset.scene = hour < 5 || hour >= 21 ? 'night' : hour < 11 ? 'morning' : hour < 17 ? 'day' : 'evening';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=0.7.10">
+  <link rel="stylesheet" href="styles.css?v=0.7.11">
 </head>
 <body>
   <div class="shell">
@@ -130,7 +130,7 @@
       <label><span>记录范围</span><select id="watched-scope"><option value="">全剧</option></select></label>
       <p class="meta" id="watched-scope-note" aria-live="polite"></p>
       <label><span>完看日期</span><input id="watched-date" type="date" min="1900-01-01" required></label>
-      <label><span>个人评分（选填）</span><select id="watched-stars"><option value="">暂不评分</option><option value="5">★★★★★ · 5 星</option><option value="4">★★★★☆ · 4 星</option><option value="3">★★★☆☆ · 3 星</option><option value="2">★★☆☆☆ · 2 星</option><option value="1">★☆☆☆☆ · 1 星</option></select></label>
+      <label><span>⭐</span><select id="watched-stars" aria-label="个人评分（选填）"><option value="">—</option><option value="5">★★★★★</option><option value="4">★★★★</option><option value="3">★★★</option><option value="2">★★</option><option value="1">★</option></select></label>
       <p class="meta">全剧已看后自动从我的剧集隐藏，时间线与评分保留；分季完看不隐藏全剧。</p>
       <p id="watched-feedback" role="status" aria-live="polite"></p>
       <div class="watched-dialog-actions"><button class="secondary" id="watched-remove" type="button" hidden>移除此记录</button><button class="secondary" id="watched-cancel" type="button">取消</button><button class="primary" id="watched-save" type="submit">✓ 保存记录</button></div>
@@ -150,6 +150,6 @@
     </form>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=0.7.10" defer></script>
+  <script src="app.js?v=0.7.11" defer></script>
 </body>
 </html>

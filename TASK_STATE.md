@@ -1,5 +1,10 @@
 # Namer 2026-11-01 update
 
+## 2026-11-06: 0.7.11 pins and stars
+
+- Page/list namespaces in browser localStorage, safe memory fallback. Pin folders within loaded category; TMDb results (kind+ID), saved filters and identification lists independently. Keep index-based action identities attached when DOM reorders. Timeline pinned group retains dates.
+- Stars shown as exact glyph count; rating picker uses stars, with accessible label. No API/data migration or cloud changes.
+
 ## 2026-11-06: 0.7.10 archive
 
 - Explicit archive/restore APIs reuse non-destructive shelfHidden. Archive filter includes previously manually hidden entries; restore keeps all saved fields and overrides completion auto-hide. Legacy delete API remains non-destructive for old clients.

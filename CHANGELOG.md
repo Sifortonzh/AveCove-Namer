@@ -1,5 +1,9 @@
 # Changelog / 更新记录
 
+## 0.7.11 — 2026-11-06
+
+- Page/list-scoped browser-persistent pins and star-only personal ratings; keep timeline dates unchanged.
+
 ## 0.7.10 — 2026-11-06
 
 - Replace shelf removal with explicit Archive/Restore actions and an archive filter; preserve all saved history.

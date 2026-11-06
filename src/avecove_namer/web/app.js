@@ -9,6 +9,21 @@ let shelfRefreshTimer;
 let watchedEditingId = null;
 let watchedEditingTitle = '';
 let watchedDialogVersion = 0;
+let pagePins = {};
+try { const stored=JSON.parse(localStorage.getItem('namer-page-pins-v1')||'{}'); if(stored&&typeof stored==='object'&&!Array.isArray(stored))pagePins=stored; } catch {}
+function pinned(scope,key){return pagePins[scope]?.[String(key)]===true}
+function pinOrder(scope,items,keyFor){return [...items].sort((a,b)=>Number(pinned(scope,keyFor(b)))-Number(pinned(scope,keyFor(a))))}
+function pinButton(scope,key,redraw){
+  const button=document.createElement('button');button.type='button';button.className='mini-button item-pin';
+  const paint=()=>{const yes=pinned(scope,key);button.textContent=yes?'📌':'📍';button.setAttribute('aria-pressed',String(yes));button.setAttribute('aria-label',yes?'取消置顶':'置顶');button.title=yes?'取消置顶':'置顶'};
+  paint();button.onclick=event=>{event.preventDefault();event.stopPropagation();if(!pagePins[scope]||typeof pagePins[scope]!=='object')pagePins[scope]={};if(pinned(scope,key))delete pagePins[scope][key];else pagePins[scope][key]=true;try{localStorage.setItem('namer-page-pins-v1',JSON.stringify(pagePins))}catch{toast('置顶在本次访问中保留；浏览器未允许持久保存',true)}paint();redraw()};return button;
+}
+function pinCards(nodes,scope,keyFor){
+  const cards=[...nodes];if(!cards.length)return;
+  const reorder=()=>{const groups=new Map();for(const card of cards){const parent=card.parentNode;if(!groups.has(parent))groups.set(parent,[]);groups.get(parent).push(card)}for(const [parent,items] of groups)if(parent)for(const card of pinOrder(scope,items,keyFor))parent.append(card)};
+  cards.forEach(card=>card.append(pinButton(scope,keyFor(card),reorder)));reorder();
+}
+function personalStars(value){const n=Number(value);return Number.isInteger(n)&&n>=1&&n<=5?'★'.repeat(n):''}
 function watchDateToday() { return new Date(Date.now() + 8 * 3600000).toISOString().slice(0,10); }
 function watchedShelfItems(items) {
   return items.flatMap(item => [
@@ -122,7 +137,8 @@ function renderShelf(items) {
   const timeline = shelfFilter === 'watched';
   const shelfItems = items.filter(onSeriesShelf);
   const archived = shelfFilter === 'archived';
-  const visible = timeline ? watchedShelfItems(items) : archived ? items.filter(item => item.shelfHidden) : shelfItems.filter(item => shelfFilter === 'all' || item[shelfFilter]);
+  const pinScope='tmdb-shelf:'+shelfFilter, pinKey=item=>timeline?`${item.id}:${item.completedSeason??'all'}`:String(item.id);
+  const visible = pinOrder(pinScope,timeline ? watchedShelfItems(items) : archived ? items.filter(item => item.shelfHidden) : shelfItems.filter(item => shelfFilter === 'all' || item[shelfFilter]),pinKey);
   host.classList.toggle('shelf-timeline', timeline);
   $('#shelf-count').textContent = timeline ? `${visible.length} 条记录` : archived ? `${visible.length} 部已归档` : `${visible.length} / ${shelfItems.length}`;
   $$('[data-shelf-filter]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.shelfFilter === shelfFilter)));
@@ -165,6 +181,7 @@ function renderShelf(items) {
     remove.textContent=archived?'↩️':'📦';remove.title=archived?'恢复到我的剧集':'归档，保留全部记录与时间线';
     for(const button of quick.children){if(button.dataset.shelfAction){button.dataset.compact='true';paintShelfStatus(button,button.dataset.shelfAction,item[button.dataset.shelfAction],name)}}
     actions.append(editProgress, remove);
+    actions.append(pinButton(pinScope,pinKey(item),()=>renderShelf([...savedSeries.values()])));
     remove.hidden = timeline;
     content.append(title, translated, meta, genre, counts, progress);
     if (timeline || item.watched || Object.keys(item.seasonCompletions || {}).length) {
@@ -172,7 +189,7 @@ function renderShelf(items) {
       const firstSeason = Object.keys(item.seasonCompletions || {})[0];
       const season = timeline ? item.completedSeason : item.watched || firstSeason === undefined ? null : Number(firstSeason);
       const record = timeline ? item : watchRecord(item.id, season == null ? '' : String(season));
-      date.textContent = `📅 ${completionLabel(season)} · ${record?.watchedDate || '补充日期'}${record?.personalStars ? ` · 个人 ${record.personalStars}★` : ''}`;
+      date.textContent = `📅 ${completionLabel(season)} · ${record?.watchedDate || '补充日期'}${personalStars(record?.personalStars) ? ` · ${personalStars(record.personalStars)}` : ''}`;
       date.setAttribute('aria-label',`编辑 ${name} ${completionLabel(season)}的观看日期和评分`);
       date.onclick = () => openWatchedDate(item.id, name, season); content.append(date);
     }
@@ -181,12 +198,12 @@ function renderShelf(items) {
       const bars=document.createElement('div');bars.className='shelf-progress-layout';bars.innerHTML=progressMarkup(item);card.classList.add('has-watch-progress');card.append(bars);
     }
     if (timeline) {
-      const key = /^\d{4}-\d{2}-\d{2}$/.test(item.watchedDate || '') ? item.watchedDate.slice(0,7) : 'unknown';
+      const key = pinned(pinScope,pinKey(item))?'pinned':/^\d{4}-\d{2}-\d{2}$/.test(item.watchedDate || '') ? item.watchedDate.slice(0,7) : 'unknown';
       if (key !== monthKey) {
         monthKey = key;
         const group = document.createElement('section'); group.className = 'shelf-month';
         const heading = document.createElement('h4'); heading.className = 'shelf-month-heading';
-        heading.textContent = key === 'unknown' ? '日期待补' : `${key.slice(0,4)} 年 ${Number(key.slice(5))} 月`;
+        heading.textContent = key === 'pinned' ? '📌' : key === 'unknown' ? '日期待补' : `${key.slice(0,4)} 年 ${Number(key.slice(5))} 月`;
         timelineGroup = document.createElement('div'); timelineGroup.className = 'shelf-month-list';
         group.append(heading, timelineGroup); host.append(group);
       }
@@ -409,6 +426,8 @@ function renderSearch(results, kind) {
   });
   $$('.source-button').forEach(button => button.addEventListener('click', () => loadSource(button.dataset.id)));
   target.querySelectorAll('.search-item').forEach((card, index) => { const item = results[index]; if ((item.kind || kind) === 'tv') card.querySelector('.actions').append(shelfActions(item.id, item.original_title || item.title)); });
+  const searchCards=[...target.querySelectorAll('.search-item')];searchCards.forEach((card,index)=>card.dataset.pinIdentity=`${results[index].kind||kind}:${results[index].id}`);
+  pinCards(searchCards,'tmdb-search',card=>card.dataset.pinIdentity);
   $$('.episode-button').forEach(button => button.addEventListener('click', () => openEpisodeDialog(button.dataset.id, button.dataset.title)));
   $$('.copy-id-button').forEach(button => button.addEventListener('click', async () => {
     await navigator.clipboard.writeText(button.dataset.id);
@@ -685,7 +704,9 @@ async function loadActualPresets() {
                 });
                 const pick = document.createElement('button'); pick.type = 'button'; pick.dataset.path = child.path; pick.dataset.kind = kind; pick.textContent = child.name; pick.title = child.name;
                 row.classList.toggle('selected', check.checked); row.append(check, pick); children.append(row);
+                row.dataset.pinIdentity=child.path;
               }
+              pinCards(children.querySelectorAll('.preset-work'),'namer',row=>row.dataset.pinIdentity);
               if (!nested.directories.length) heading.textContent = `${item.name} · 没有子目录`;
               loaded = true; children.hidden = false; expand.textContent = '收起 ▴'; expand.setAttribute('aria-expanded','true');
             } catch (error) { toast(error.message, true); expand.textContent = '重试 ▾'; }
@@ -831,9 +852,11 @@ async function loadDetective() {
     $('#detective-summary').innerHTML = keys.map(([key,label]) => `<div class="stat"><b>${data.counts[key] || 0}</b><span>${label}</span></div>`).join('');
     const manual = $('#manual-history');
     manual.innerHTML = `<div class="history-heading"><strong>手动识别</strong><span>最近 ${data.manual_events.length} / 20 条</span></div>${data.manual_events.length ? `<div class="event-list">${data.manual_events.map(event => `<article class="event-item"><div><h3>${escapeHtml(event.path)}</h3><p><b class="provider-tag">手动 · ${escapeHtml(event.provider || 'Namer')}</b>${escapeHtml(event.reason || (event.tmdb_id ? `TMDb ${event.tmdb_id}` : ''))}</p></div><span class="status identified">${statusLabel(event.status)}</span></article>`).join('')}</div>` : '<div class="history-empty">还没有手动识别记录</div>'}`;
+    pinCards(manual.querySelectorAll('.event-item'),'detective-manual',card=>card.querySelector('h3').textContent);
     if (!data.events.length) { target.className='result-space empty-state'; target.innerHTML='<span class="empty-icon">◉</span><p>还没有自动检测记录</p>'; return; }
     target.className = 'result-space event-list';
     target.innerHTML = [...data.events].reverse().map(event => `<article class="event-item"><div><h3>${escapeHtml(event.path)}</h3><p><b class="provider-tag">${escapeHtml(event.provider || 'Namer')}</b>${escapeHtml(event.reason || (event.tmdb_id ? `TMDb ${event.tmdb_id}` : ''))}</p></div><span class="status ${escapeHtml(event.status)}">${statusLabel(event.status)}</span></article>`).join('');
+    pinCards(target.querySelectorAll('.event-item'),'detective-auto',card=>card.querySelector('h3').textContent);
   } catch (error) { fail(target, error); }
 }
 

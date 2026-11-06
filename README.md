@@ -4,7 +4,9 @@ Reviewable cloud media naming, original-language TMDb metadata, and a personal s
 
 [简体中文](README.zh-CN.md) · [Release workflow](docs/releases.md) · [Changelog](CHANGELOG.md)
 
-## Current release: 0.7.10
+## Current release: 0.7.11
+
+- Independent 📌 pins for Namer resource folders, TMDb results/shelf filters and identification lists. Stored in the current browser; no cross-device sync. Timeline pins get a separate group without changing completion dates. Personal ratings display their exact star count.
 
 - Archive shelf entries with 📦 and restore them with ↩️ from the archive filter. Progress, stars and timelines remain intact, including entries previously hidden manually.
 
