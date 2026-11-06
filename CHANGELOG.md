@@ -1,5 +1,9 @@
 # Changelog / 更新记录
 
+## 0.7.8 — 2026-11-06
+
+- Auto-hide full-series completions while retaining history. Add distinct vertical-season/horizontal-total progress bars and compact icon actions; move TMDb link into poster dialog.
+
 ## 0.7.7 — 2026-11-06
 
 - Shelf deletion now hides the series only: keep all completion dates, stars, progress and timeline entries. Favorite/Watching can restore visibility.

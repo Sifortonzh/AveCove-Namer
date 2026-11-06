@@ -13,7 +13,7 @@
       document.documentElement.dataset.scene = hour < 5 || hour >= 21 ? 'night' : hour < 11 ? 'morning' : hour < 17 ? 'day' : 'evening';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=0.7.6">
+  <link rel="stylesheet" href="styles.css?v=0.7.8">
 </head>
 <body>
   <div class="shell">
@@ -110,6 +110,7 @@
   <dialog id="episode-dialog" class="episode-dialog" aria-labelledby="episode-heading">
     <div class="result-toolbar"><h2 id="episode-heading">🎬 查询单集</h2><button class="mini-button" id="episode-close" type="button" aria-label="关闭单集查询">✕ 关闭</button></div>
     <p id="episode-series" class="meta"></p>
+    <a id="episode-tmdb-link" class="mini-button" target="_blank" rel="noopener noreferrer">TMDb 剧集详情</a>
     <form id="episode-form" class="episode-form">
       <div class="episode-number-fields">
         <label><span>季号</span><div class="episode-number-input"><b aria-hidden="true">S</b><input id="episode-season" inputmode="numeric" pattern="[0-9]{1,3}" maxlength="3" placeholder="01" autocomplete="off" required aria-label="季号，只填数字" aria-describedby="episode-hint"></div></label>
@@ -128,7 +129,7 @@
       <p class="meta" id="watched-scope-note" aria-live="polite"></p>
       <label><span>完看日期</span><input id="watched-date" type="date" min="1900-01-01" required></label>
       <label><span>个人评分（选填）</span><select id="watched-stars"><option value="">暂不评分</option><option value="5">★★★★★ · 5 星</option><option value="4">★★★★☆ · 4 星</option><option value="3">★★★☆☆ · 3 星</option><option value="2">★★☆☆☆ · 2 星</option><option value="1">★☆☆☆☆ · 1 星</option></select></label>
-      <p class="meta">日期用于时间线排序；个人星级不会改变 TMDb 评分。</p>
+      <p class="meta">全剧已看后自动从我的剧集隐藏，时间线与评分保留；分季完看不隐藏全剧。</p>
       <p id="watched-feedback" role="status" aria-live="polite"></p>
       <div class="watched-dialog-actions"><button class="secondary" id="watched-remove" type="button" hidden>移除此记录</button><button class="secondary" id="watched-cancel" type="button">取消</button><button class="primary" id="watched-save" type="submit">✓ 保存记录</button></div>
     </form>
@@ -147,6 +148,6 @@
     </form>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=0.7.7" defer></script>
+  <script src="app.js?v=0.7.8" defer></script>
 </body>
 </html>

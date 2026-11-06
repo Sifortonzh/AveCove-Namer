@@ -5,6 +5,19 @@ from avecove_namer.shelf import SeriesShelf
 
 
 class ShelfTests(unittest.TestCase):
+    def test_whole_completion_resets_explicit_restore_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            shelf=SeriesShelf(Path(directory)/'shelf.json')
+            shelf.request({'id':'1','action':'favorite','enabled':True})
+            row=shelf.request({'id':'1','action':'watched','enabled':True,'seasonNumber':1})['items'][0]
+            self.assertTrue(row['shelfRestored'])
+            row=shelf.request({'id':'1','action':'watched','enabled':True,'personalStars':4})['items'][0]
+            self.assertNotIn('shelfRestored',row)
+            self.assertEqual(len(shelf.request()['timeline']),2)
+            row=shelf.request({'id':'1','action':'watching','enabled':True})['items'][0]
+            self.assertTrue(row['shelfRestored'])
+            self.assertEqual(row['personalStars'],4)
+
     def test_delete_hides_only_shelf_and_preserves_timeline(self):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'shelf.json'

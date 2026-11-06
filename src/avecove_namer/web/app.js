@@ -92,11 +92,35 @@ function shelfActions(id, title) {
   }
   return actions;
 }
+function onSeriesShelf(item) { return !!(!item.shelfHidden && (!item.watched || item.watching || item.shelfRestored)); }
+function seriesProgress(item) {
+  const season=Number(item.season), current=Number(item.episode);
+  const seasons=(item.seasons || []).filter(s=>Number.isInteger(s.number)&&Number.isInteger(s.episode_count)&&s.episode_count>=0);
+  const selected=seasons.find(s=>s.number===season);
+  const total=Number.isInteger(item.episode_count)&&item.episode_count>0?item.episode_count:null;
+  const previous=seasons.filter(s=>s.number>0&&s.number<season);
+  const complete=season>0&&season<=999&&Array.from({length:season-1},(_,i)=>i+1).every(n=>previous.some(s=>s.number===n));
+  const valid=Number.isInteger(current)&&current>0;
+  return {season:Number.isInteger(season)?season:null,current:valid?current:null,
+    seasonTotal:selected?.episode_count>0?selected.episode_count:null,total,
+    cumulative:valid&&complete?previous.reduce((n,s)=>n+s.episode_count,0)+current:null};
+}
+function progressMarkup(item) {
+  const p=seriesProgress(item), bars=[
+    {label:p.season===0?'特别篇':'本季',value:p.current,total:p.seasonTotal,style:'season'},
+    {label:'全剧',value:p.cumulative,total:p.total,style:'total'},
+  ];
+  return '<div class="shelf-progress-bars">'+bars.map(b=>{
+    const valid=b.value!==null&&b.total!==null&&b.value<=b.total;
+    const label=`${b.label} · ${b.value??'—'}/${b.total??'—'}`;
+    return `<div class="shelf-progress-row progress-${b.style}"><span title="${escapeHtml(label)}">${b.label}<b>${b.value??'—'}/${b.total??'—'}</b></span>${valid?`<div class="progress-track"><progress value="${b.value}" max="${b.total}" aria-label="${escapeHtml(label)}"></progress></div>`:'<span class="progress-unknown" title="暂无完整集数或进度超出 TMDb 记录">—</span>'}</div>`;
+  }).join('')+'</div>';
+}
 function renderShelf(items) {
   savedSeries = new Map(items.map(item => [String(item.id), item]));
   const host = $('#series-shelf-list'); host.replaceChildren();
   const timeline = shelfFilter === 'watched';
-  const shelfItems = items.filter(item => !item.shelfHidden);
+  const shelfItems = items.filter(onSeriesShelf);
   const visible = timeline ? watchedShelfItems(items) : shelfItems.filter(item => shelfFilter === 'all' || item[shelfFilter]);
   host.classList.toggle('shelf-timeline', timeline);
   $('#shelf-count').textContent = timeline ? `${visible.length} 条记录` : `${visible.length} / ${shelfItems.length}`;
@@ -131,11 +155,14 @@ function renderShelf(items) {
     const favorite = quick.querySelector('[data-shelf-action="favorite"]'); favorite.classList.add('shelf-star'); favorite.dataset.compact = 'true'; paintShelfStatus(favorite,'favorite',item.favorite,name);
     quick.removeChild(favorite); actions.append(quick);
     const source = document.createElement('button'); source.type = 'button'; source.className = 'mini-button'; source.textContent = '源数据'; source.onclick = () => loadSource(item.id); actions.append(source);
-    progress.textContent = progress.textContent.replace('上次查询', '进度');
+    progress.textContent = timeline ? completionLabel(item.completedSeason)+'已看' : item.watching ? '在看' : item.watched ? '全剧已看' : '已收藏';
     const editProgress = document.createElement('button'); editProgress.type = 'button'; editProgress.className = 'mini-button'; editProgress.textContent = '✏️ 录入进度'; editProgress.onclick = () => openProgressDialog(item.id);
-    const tmdbLink = document.createElement('a'); tmdbLink.className = 'mini-button'; tmdbLink.textContent = 'TMDb 详情'; tmdbLink.href = `https://www.themoviedb.org/tv/${encodeURIComponent(item.id)}`; tmdbLink.target = '_blank'; tmdbLink.rel = 'noopener noreferrer';
     const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'mini-button shelf-delete'; remove.textContent = '🗑 删除剧集'; remove.setAttribute('aria-label',`删除 ${name} 的 Namer 记录`); remove.onclick = async () => {remove.disabled=true;try{await deleteShelfItem(item.id)}catch(error){toast(error.message,true)}finally{remove.disabled=false}};
-    actions.append(editProgress, tmdbLink, remove);
+    source.textContent='🖼️';source.title='源数据与图片';source.setAttribute('aria-label',source.title);
+    editProgress.textContent='✏️';editProgress.title='录入进度';editProgress.setAttribute('aria-label',editProgress.title);
+    remove.textContent='🗑️';remove.title='从我的剧集移除，保留时间线';
+    for(const button of quick.children){if(button.dataset.shelfAction){button.dataset.compact='true';paintShelfStatus(button,button.dataset.shelfAction,item[button.dataset.shelfAction],name)}}
+    actions.append(editProgress, remove);
     remove.hidden = timeline;
     content.append(title, translated, meta, genre, counts, progress);
     if (timeline || item.watched || Object.keys(item.seasonCompletions || {}).length) {
@@ -148,6 +175,9 @@ function renderShelf(items) {
       date.onclick = () => openWatchedDate(item.id, name, season); content.append(date);
     }
     content.append(actions); card.append(poster, content, favorite);
+    if (!timeline && item.season !== undefined) {
+      const bars=document.createElement('div');bars.className='shelf-progress-layout';bars.innerHTML=progressMarkup(item);card.classList.add('has-watch-progress');card.append(bars);
+    }
     if (timeline) {
       const key = /^\d{4}-\d{2}-\d{2}$/.test(item.watchedDate || '') ? item.watchedDate.slice(0,7) : 'unknown';
       if (key !== monthKey) {
@@ -398,6 +428,7 @@ function openEpisodeDialog(id, title) {
   const dialog = $('#episode-dialog');
   dialog.dataset.seriesId = id;
   $('#episode-series').textContent = title ? `${title} · TMDb ${id}` : `TMDb ${id}`;
+  $('#episode-tmdb-link').href = `https://www.themoviedb.org/tv/${encodeURIComponent(id)}`;
   const saved = savedSeries.get(String(id));
   $('#episode-season').value = saved?.season ?? '';
   $('#episode-number').value = saved?.episode ?? '';

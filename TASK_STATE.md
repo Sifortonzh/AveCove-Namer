@@ -1,5 +1,10 @@
 # Namer 2026-11-01 update
 
+## 2026-11-06: 0.7.8 completion and progress UI
+
+- Full completions auto-hide unless watching/explicitly restored; season completions keep displaying. Legacy whole-completion rows auto-hide at render time, no data migration.
+- Purple season bar on right; blue cumulative bar below. TMDb season episode counts exclude specials from full-series position; missing earlier-season data stays unknown. Icon actions, TMDb link moved into episode dialog. Preserve all history.
+
 ## 2026-11-06: 0.7.7 hide, not erase
 
 - User correction: delete only hides My Series; timeline/dates/stars/progress remain. Hidden rows retained in storage and timeline, excluded from normal shelf filters/counts. Marking Favorite/Watching true restores display. No destructive migration.

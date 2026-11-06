@@ -137,6 +137,7 @@ class SeriesShelf:
                         row['watched'] = payload['enabled']
                         if payload['enabled']:
                             row.update(completion_record(payload, row))
+                            row.pop('shelfRestored', None)
                             if not rows.get(ident, {}).get('watched'):
                                 row['watching'] = False
                         else:
@@ -146,6 +147,7 @@ class SeriesShelf:
                         row[action] = payload['enabled']
                         if payload['enabled']:
                             row.pop('shelfHidden', None)
+                            row['shelfRestored'] = True
                     title = str(payload.get('title', '')).strip()[:250]
                     if title:
                         row['title'] = title

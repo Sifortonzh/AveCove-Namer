@@ -4,7 +4,9 @@ Reviewable cloud media naming, original-language TMDb metadata, and a personal s
 
 [简体中文](README.zh-CN.md) · [Release workflow](docs/releases.md) · [Changelog](CHANGELOG.md)
 
-## Current release: 0.7.7
+## Current release: 0.7.8
+
+- Whole-series completion automatically hides a series from My Series, retaining its timeline. A single-season completion does not hide it. Compact icon actions, purple vertical season progress at the right and blue horizontal cumulative progress below; TMDb link lives in the poster's episode dialog. Totals require TMDb data, and cumulative position assumes earlier seasons have been watched.
 
 - **Series management:** enter S/E progress, open TMDb details, or hide a series from My Series after confirmation. All watch dates, stars, progress and timeline entries remain intact. Mark Favorite or Watching again to restore its display. Cloud files are never touched.
 
