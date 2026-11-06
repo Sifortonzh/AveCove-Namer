@@ -5,7 +5,7 @@ from avecove_namer.shelf import SeriesShelf
 
 
 class ShelfTests(unittest.TestCase):
-    def test_delete_clears_only_selected_series_and_requires_confirmation(self):
+    def test_delete_hides_only_shelf_and_preserves_timeline(self):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'shelf.json'
             shelf=SeriesShelf(path)
@@ -17,9 +17,14 @@ class ShelfTests(unittest.TestCase):
             with self.assertRaises(ValueError):shelf.request({'id':'1','action':'delete'})
             self.assertEqual(path.read_text(),original)
             result=shelf.request({'id':'1','action':'delete','confirm':True})
-            self.assertEqual([r['id'] for r in result['items']],['2'])
-            self.assertEqual([r['id'] for r in SeriesShelf(path).request()['timeline']],['2'])
+            self.assertEqual([r['id'] for r in result['items'] if not r.get('shelfHidden')],['2'])
+            self.assertEqual(sorted(r['id'] for r in SeriesShelf(path).request()['timeline']),['1','2'])
+            hidden=next(r for r in result['items'] if r['id']=='1')
+            self.assertEqual(hidden['seasonCompletions']['1']['personalStars'],5)
+            self.assertEqual(hidden['episode'],2)
             self.assertEqual(shelf.request({'id':'1','action':'delete','confirm':True})['items'],result['items'])
+            restored=shelf.request({'id':'1','action':'favorite','enabled':True})
+            self.assertFalse(next(r for r in restored['items'] if r['id']=='1').get('shelfHidden'))
 
     def test_manual_progress_preserves_flags_and_validates_integers(self):
         with tempfile.TemporaryDirectory() as directory:

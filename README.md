@@ -4,9 +4,9 @@ Reviewable cloud media naming, original-language TMDb metadata, and a personal s
 
 [简体中文](README.zh-CN.md) · [Release workflow](docs/releases.md) · [Changelog](CHANGELOG.md)
 
-## Current release: 0.7.6
+## Current release: 0.7.7
 
-- **Series management:** enter S/E progress directly, open TMDb details, or delete one series from the Namer shelf after confirmation. Cloud files are never touched. Other series and existing completion dates/stars remain intact.
+- **Series management:** enter S/E progress, open TMDb details, or hide a series from My Series after confirmation. All watch dates, stars, progress and timeline entries remain intact. Mark Favorite or Watching again to restore its display. Cloud files are never touched.
 
 - **Watch timeline:** select ✅ Watched to record a whole series or a TMDb season, set its completion date and optionally give it 1–5 personal stars. Existing records remain intact; entries sort by completion date.
 

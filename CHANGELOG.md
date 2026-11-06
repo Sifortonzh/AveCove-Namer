@@ -1,5 +1,9 @@
 # Changelog / 更新记录
 
+## 0.7.7 — 2026-11-06
+
+- Shelf deletion now hides the series only: keep all completion dates, stars, progress and timeline entries. Favorite/Watching can restore visibility.
+
 ## 0.7.6 — 2026-11-06
 
 - Add manual numeric season/episode progress, TMDb detail links and confirmed shelf deletion. Preserve other series and cloud resources.

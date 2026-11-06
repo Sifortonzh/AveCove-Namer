@@ -104,8 +104,9 @@ class SeriesShelf:
                 row = dict(rows.get(ident, {'id': ident, 'favorite': False, 'watching': False}))
                 if action == 'delete':
                     if payload.get('confirm') is not True:
-                        raise ValueError('请确认删除这部剧集的 Namer 记录')
-                    row = {}
+                        raise ValueError('请确认从我的剧集中移除')
+                    if ident in rows:
+                        row['shelfHidden'] = True
                 elif action == 'progress':
                     values = (payload.get('season'), payload.get('episode'))
                     if any(isinstance(value, bool) or not str(value).isascii() or not str(value).isdecimal() for value in values):
@@ -143,6 +144,8 @@ class SeriesShelf:
                                 row.pop(key, None)
                     else:
                         row[action] = payload['enabled']
+                        if payload['enabled']:
+                            row.pop('shelfHidden', None)
                     title = str(payload.get('title', '')).strip()[:250]
                     if title:
                         row['title'] = title

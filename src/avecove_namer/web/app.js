@@ -96,9 +96,10 @@ function renderShelf(items) {
   savedSeries = new Map(items.map(item => [String(item.id), item]));
   const host = $('#series-shelf-list'); host.replaceChildren();
   const timeline = shelfFilter === 'watched';
-  const visible = timeline ? watchedShelfItems(items) : items.filter(item => shelfFilter === 'all' || item[shelfFilter]);
+  const shelfItems = items.filter(item => !item.shelfHidden);
+  const visible = timeline ? watchedShelfItems(items) : shelfItems.filter(item => shelfFilter === 'all' || item[shelfFilter]);
   host.classList.toggle('shelf-timeline', timeline);
-  $('#shelf-count').textContent = timeline ? `${visible.length} 条记录` : `${visible.length} / ${items.length}`;
+  $('#shelf-count').textContent = timeline ? `${visible.length} 条记录` : `${visible.length} / ${shelfItems.length}`;
   $$('[data-shelf-filter]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.shelfFilter === shelfFilter)));
   if (!visible.length) {
     const empty = document.createElement('p'); empty.className = 'shelf-empty';
@@ -135,6 +136,7 @@ function renderShelf(items) {
     const tmdbLink = document.createElement('a'); tmdbLink.className = 'mini-button'; tmdbLink.textContent = 'TMDb 详情'; tmdbLink.href = `https://www.themoviedb.org/tv/${encodeURIComponent(item.id)}`; tmdbLink.target = '_blank'; tmdbLink.rel = 'noopener noreferrer';
     const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'mini-button shelf-delete'; remove.textContent = '🗑 删除剧集'; remove.setAttribute('aria-label',`删除 ${name} 的 Namer 记录`); remove.onclick = async () => {remove.disabled=true;try{await deleteShelfItem(item.id)}catch(error){toast(error.message,true)}finally{remove.disabled=false}};
     actions.append(editProgress, tmdbLink, remove);
+    remove.hidden = timeline;
     content.append(title, translated, meta, genre, counts, progress);
     if (timeline || item.watched || Object.keys(item.seasonCompletions || {}).length) {
       const date = document.createElement('button'); date.type = 'button'; date.className = 'shelf-watched-date';
@@ -175,10 +177,10 @@ function openProgressDialog(id) {
 async function deleteShelfItem(id) {
   const item = savedSeries.get(String(id)); if (!item) return;
   const name = item.originalTitle || item.title || `TMDb ${id}`;
-  if (!confirm(`🗑 删除「${name}」的所有 Namer 收藏、进度、评分和完看记录？不会删除任何网盘文件。`)) return;
+  if (!confirm(`🗑 从「我的剧集」移除「${name}」？观看时间线、完看日期、评分和进度全部保留，不会删除网盘文件。再次标记收藏或在看可重新显示。`)) return;
   const data = await api('/api/tmdb/shelf', {id:String(id),action:'delete',confirm:true});
   renderShelf(data.items); if (data.artwork_pending) scheduleShelfRefresh();
-  toast('✓ 已删除 Namer 记录，网盘文件未改动');
+  toast('✓ 已从我的剧集移除，观看时间线与评分已保留');
 }
 async function loadShelf() {
   clearTimeout(shelfRefreshTimer);

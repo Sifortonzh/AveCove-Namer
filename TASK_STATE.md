@@ -1,5 +1,9 @@
 # Namer 2026-11-01 update
 
+## 2026-11-06: 0.7.7 hide, not erase
+
+- User correction: delete only hides My Series; timeline/dates/stars/progress remain. Hidden rows retained in storage and timeline, excluded from normal shelf filters/counts. Marking Favorite/Watching true restores display. No destructive migration.
+
 ## 2026-11-06: 0.7.6 shelf management
 
 - Latest Notes Namer section: delete shelf series, manually enter S/E progress, link TMDb details. Add confirmed delete API (shelf only), strict progress validation and responsive numeric form. Preserve watched dates/stars and unrelated rows.
