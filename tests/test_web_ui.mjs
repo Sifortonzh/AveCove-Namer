@@ -44,7 +44,7 @@ const context = vm.createContext({
   },
 });
 vm.runInContext(fs.readFileSync(new URL('../src/avecove_namer/web/app.js', import.meta.url), 'utf8'), context);
-for (const [action,icon] of [['favorite','🌟'],['watching','👀'],['watched','✅']]) {
+for (const [action,icon] of [['favorite','🌟'],['queued','🕒'],['watching','👀'],['watched','✅']]) {
   const button = new Element(); context.statusTestButton = button;
   vm.runInContext(`paintShelfStatus(statusTestButton, '${action}', false, 'Example')`, context);
   assert.ok(button.textContent.startsWith(icon)); assert.equal(button.getAttribute('aria-pressed'),'false');

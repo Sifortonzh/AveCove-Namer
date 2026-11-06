@@ -5,6 +5,20 @@ from avecove_namer.shelf import SeriesShelf
 
 
 class ShelfTests(unittest.TestCase):
+    def test_queued_alone_is_durable_and_independent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'shelf.json';shelf=SeriesShelf(path)
+            shelf.request({'id':'1399','title':'Game of Thrones','action':'queued','enabled':True})
+            row=SeriesShelf(path).request()['items'][0]
+            self.assertTrue(row['queued']);self.assertFalse(row['favorite']);self.assertFalse(row['watching'])
+            self.assertEqual(shelf.request()['timeline'],[])
+            shelf.request({'id':'1399','action':'favorite','enabled':True})
+            row=shelf.request({'id':'1399','action':'queued','enabled':False})['items'][0]
+            self.assertTrue(row['favorite']);self.assertFalse(row['queued'])
+            shelf.request({'id':'1399','action':'delete','confirm':True})
+            row=shelf.request({'id':'1399','action':'queued','enabled':True})['items'][0]
+            self.assertFalse(row.get('shelfHidden'))
+
     def test_whole_completion_resets_explicit_restore_only(self):
         with tempfile.TemporaryDirectory() as directory:
             shelf=SeriesShelf(Path(directory)/'shelf.json')

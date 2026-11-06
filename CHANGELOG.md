@@ -1,5 +1,9 @@
 # Changelog / 更新记录
 
+## 0.7.9 — 2026-11-06
+
+- Add independent Watch Later status to TV search, source details and shelf, with a persistent tag and filter.
+
 ## 0.7.8 — 2026-11-06
 
 - Auto-hide full-series completions while retaining history. Add distinct vertical-season/horizontal-total progress bars and compact icon actions; move TMDb link into poster dialog.

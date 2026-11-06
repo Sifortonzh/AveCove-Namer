@@ -63,7 +63,7 @@ function openWatchedDate(id, title = '', season = undefined) {
   }).catch(()=>{if(version===watchedDialogVersion&&$('#watched-dialog').open)hint.textContent='暂时无法读取 TMDb 季列表，仍可保存全剧或编辑已有记录。'});
 }
 function episodeCopyTitle(number, title) { return `E${String(Number(number)).padStart(2, '0')}: ${title || ''}`; }
-const shelfStatusTypes = {favorite:{icon:'🌟',label:'收藏'},watching:{icon:'👀',label:'在看'},watched:{icon:'✅',label:'已看'}};
+const shelfStatusTypes = {favorite:{icon:'🌟',label:'收藏'},queued:{icon:'🕒',label:'待看'},watching:{icon:'👀',label:'在看'},watched:{icon:'✅',label:'已看'}};
 function paintShelfStatus(button, action, enabled, title = '') {
   const status = shelfStatusTypes[action]; if (!status) return;
   button.classList.add('shelf-state');
@@ -155,7 +155,8 @@ function renderShelf(items) {
     const favorite = quick.querySelector('[data-shelf-action="favorite"]'); favorite.classList.add('shelf-star'); favorite.dataset.compact = 'true'; paintShelfStatus(favorite,'favorite',item.favorite,name);
     quick.removeChild(favorite); actions.append(quick);
     const source = document.createElement('button'); source.type = 'button'; source.className = 'mini-button'; source.textContent = '源数据'; source.onclick = () => loadSource(item.id); actions.append(source);
-    progress.textContent = timeline ? completionLabel(item.completedSeason)+'已看' : item.watching ? '在看' : item.watched ? '全剧已看' : '已收藏';
+    progress.textContent = timeline ? completionLabel(item.completedSeason)+'已看' : item.watching ? '在看' : item.watched ? '全剧已看' : item.favorite ? '已收藏' : '';
+    if(item.queued){const tag=document.createElement('span');tag.className='shelf-queued-tag';tag.textContent='🕒 待看';progress.append(tag)}
     const editProgress = document.createElement('button'); editProgress.type = 'button'; editProgress.className = 'mini-button'; editProgress.textContent = '✏️ 录入进度'; editProgress.onclick = () => openProgressDialog(item.id);
     const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'mini-button shelf-delete'; remove.textContent = '🗑 删除剧集'; remove.setAttribute('aria-label',`删除 ${name} 的 Namer 记录`); remove.onclick = async () => {remove.disabled=true;try{await deleteShelfItem(item.id)}catch(error){toast(error.message,true)}finally{remove.disabled=false}};
     source.textContent='🖼️';source.title='源数据与图片';source.setAttribute('aria-label',source.title);

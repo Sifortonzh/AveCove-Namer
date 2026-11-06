@@ -1,5 +1,9 @@
 # Namer 2026-11-01 update
 
+## 2026-11-06: 0.7.9 Watch Later
+
+- Independent queued flag retained even without favorite/watching; search button, shelf tag and filter. Existing shelf is TV-specific; this release does not introduce mixed movie IDs or cloud acquisition. Re-queue restores hidden entries; mobile search actions two columns.
+
 ## 2026-11-06: 0.7.8 completion and progress UI
 
 - Full completions auto-hide unless watching/explicitly restored; season completions keep displaying. Legacy whole-completion rows auto-hide at render time, no data migration.
