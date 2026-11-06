@@ -121,9 +121,10 @@ function renderShelf(items) {
   const host = $('#series-shelf-list'); host.replaceChildren();
   const timeline = shelfFilter === 'watched';
   const shelfItems = items.filter(onSeriesShelf);
-  const visible = timeline ? watchedShelfItems(items) : shelfItems.filter(item => shelfFilter === 'all' || item[shelfFilter]);
+  const archived = shelfFilter === 'archived';
+  const visible = timeline ? watchedShelfItems(items) : archived ? items.filter(item => item.shelfHidden) : shelfItems.filter(item => shelfFilter === 'all' || item[shelfFilter]);
   host.classList.toggle('shelf-timeline', timeline);
-  $('#shelf-count').textContent = timeline ? `${visible.length} 条记录` : `${visible.length} / ${shelfItems.length}`;
+  $('#shelf-count').textContent = timeline ? `${visible.length} 条记录` : archived ? `${visible.length} 部已归档` : `${visible.length} / ${shelfItems.length}`;
   $$('[data-shelf-filter]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.shelfFilter === shelfFilter)));
   if (!visible.length) {
     const empty = document.createElement('p'); empty.className = 'shelf-empty';
@@ -158,10 +159,10 @@ function renderShelf(items) {
     progress.textContent = timeline ? completionLabel(item.completedSeason)+'已看' : item.watching ? '在看' : item.watched ? '全剧已看' : item.favorite ? '已收藏' : '';
     if(item.queued){const tag=document.createElement('span');tag.className='shelf-queued-tag';tag.textContent='🕒 待看';progress.append(tag)}
     const editProgress = document.createElement('button'); editProgress.type = 'button'; editProgress.className = 'mini-button'; editProgress.textContent = '✏️ 录入进度'; editProgress.onclick = () => openProgressDialog(item.id);
-    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'mini-button shelf-delete'; remove.textContent = '🗑 删除剧集'; remove.setAttribute('aria-label',`删除 ${name} 的 Namer 记录`); remove.onclick = async () => {remove.disabled=true;try{await deleteShelfItem(item.id)}catch(error){toast(error.message,true)}finally{remove.disabled=false}};
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'mini-button'; remove.setAttribute('aria-label',`${archived?'恢复':'归档'} ${name}`); remove.onclick = async () => {remove.disabled=true;try{await archiveShelfItem(item.id,archived)}catch(error){toast(error.message,true)}finally{remove.disabled=false}};
     source.textContent='🖼️';source.title='源数据与图片';source.setAttribute('aria-label',source.title);
     editProgress.textContent='✏️';editProgress.title='录入进度';editProgress.setAttribute('aria-label',editProgress.title);
-    remove.textContent='🗑️';remove.title='从我的剧集移除，保留时间线';
+    remove.textContent=archived?'↩️':'📦';remove.title=archived?'恢复到我的剧集':'归档，保留全部记录与时间线';
     for(const button of quick.children){if(button.dataset.shelfAction){button.dataset.compact='true';paintShelfStatus(button,button.dataset.shelfAction,item[button.dataset.shelfAction],name)}}
     actions.append(editProgress, remove);
     remove.hidden = timeline;
@@ -205,13 +206,13 @@ function openProgressDialog(id) {
   $('#progress-feedback').textContent = '';
   $('#progress-dialog').showModal(); $('#progress-season').focus();
 }
-async function deleteShelfItem(id) {
+async function archiveShelfItem(id, restore = false) {
   const item = savedSeries.get(String(id)); if (!item) return;
   const name = item.originalTitle || item.title || `TMDb ${id}`;
-  if (!confirm(`🗑 从「我的剧集」移除「${name}」？观看时间线、完看日期、评分和进度全部保留，不会删除网盘文件。再次标记收藏或在看可重新显示。`)) return;
-  const data = await api('/api/tmdb/shelf', {id:String(id),action:'delete',confirm:true});
+  if (!restore && !confirm(`📦 归档「${name}」？所有进度、评分和时间线保留，可在归档列表中恢复；网盘文件不变。`)) return;
+  const data = await api('/api/tmdb/shelf', {id:String(id),action:restore?'restore':'archive',confirm:true});
   renderShelf(data.items); if (data.artwork_pending) scheduleShelfRefresh();
-  toast('✓ 已从我的剧集移除，观看时间线与评分已保留');
+  toast(restore?'✓ 已恢复到我的剧集':'📦 已归档，可在归档列表中恢复');
 }
 async function loadShelf() {
   clearTimeout(shelfRefreshTimer);

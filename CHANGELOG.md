@@ -1,5 +1,9 @@
 # Changelog / 更新记录
 
+## 0.7.10 — 2026-11-06
+
+- Replace shelf removal with explicit Archive/Restore actions and an archive filter; preserve all saved history.
+
 ## 0.7.9 — 2026-11-06
 
 - Add independent Watch Later status to TV search, source details and shelf, with a persistent tag and filter.

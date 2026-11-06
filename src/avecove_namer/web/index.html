@@ -13,7 +13,7 @@
       document.documentElement.dataset.scene = hour < 5 || hour >= 21 ? 'night' : hour < 11 ? 'morning' : hour < 17 ? 'day' : 'evening';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=0.7.9">
+  <link rel="stylesheet" href="styles.css?v=0.7.10">
 </head>
 <body>
   <div class="shell">
@@ -64,6 +64,7 @@
             <button type="button" class="mini-button" data-shelf-filter="watching" aria-pressed="false">👀 在看</button>
             <button type="button" class="mini-button" data-shelf-filter="favorite" aria-pressed="false">🌟 收藏</button>
             <button type="button" class="mini-button" data-shelf-filter="watched" aria-pressed="false">✅ 已看 · 时间线</button>
+            <button type="button" class="mini-button" data-shelf-filter="archived" aria-pressed="false">📦 归档</button>
           </div>
           <div id="series-shelf-list" aria-live="polite">正在读取…</div>
           <p class="shelf-credit">海报与剧照来自 TMDb · 已观看按完成日期倒序排列，日期可修改；这是你标记的观看记录，不代表剧集已完结。</p>
@@ -149,6 +150,6 @@
     </form>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=0.7.9" defer></script>
+  <script src="app.js?v=0.7.10" defer></script>
 </body>
 </html>

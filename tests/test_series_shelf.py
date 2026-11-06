@@ -5,6 +5,17 @@ from avecove_namer.shelf import SeriesShelf
 
 
 class ShelfTests(unittest.TestCase):
+    def test_archive_and_restore_keep_every_saved_field(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'shelf.json';shelf=SeriesShelf(path)
+            shelf.request({'id':'1','action':'watched','enabled':True,'watchedDate':'2026-01-01','personalStars':5})
+            shelf.request({'id':'1','action':'progress','season':2,'episode':3})
+            row=shelf.request({'id':'1','action':'archive','confirm':True})['items'][0]
+            self.assertTrue(row['shelfHidden'])
+            restored=SeriesShelf(path).request({'id':'1','action':'restore'})['items'][0]
+            self.assertNotIn('shelfHidden',restored);self.assertTrue(restored['shelfRestored'])
+            for key in ('watchedDate','personalStars','season','episode'):self.assertEqual(row[key],restored[key])
+
     def test_queued_alone_is_durable_and_independent(self):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'shelf.json';shelf=SeriesShelf(path)
