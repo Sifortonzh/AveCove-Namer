@@ -13,7 +13,7 @@
       document.documentElement.dataset.scene = hour < 5 || hour >= 21 ? 'night' : hour < 11 ? 'morning' : hour < 17 ? 'day' : 'evening';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=0.7.11">
+  <link rel="stylesheet" href="styles.css?v=0.7.12">
 </head>
 <body>
   <div class="shell">
@@ -21,30 +21,26 @@
     <aside class="sidebar" id="tool-sidebar">
       <a class="brand" href="#namer" aria-label="AveCove Namer 首页">
         <img class="brand-mark" src="namer-mark.svg?v=0.7.0" alt="Namer" width="38" height="38">
-        <span><strong>AveCove Namer</strong><small>影视命名工作台</small></span>
+        <strong>AveCove Namer</strong><span class="status-dot" id="service-status" role="img" aria-label="连接中" title="连接中"></span>
       </a>
       <nav aria-label="工具导航">
         <button class="nav-item active" data-view="namer"><span>✦</span>Namer</button>
         <button class="nav-item" data-view="tmdb"><span>⌕</span>TMDb 查询</button>
-        <button class="nav-item" data-view="detective"><span>◉</span>识别记录</button>
+        <button class="nav-item" data-view="shelf"><span>✿</span>风花雪月</button>
       </nav>
-      <div class="sidebar-foot">
-        <span class="status-dot"></span>
-        <span id="service-status">正在连接服务</span>
-      </div>
     </aside>
 
     <main>
       <header class="topbar">
         <button class="mobile-menu" id="mobile-menu" aria-label="打开导航" aria-expanded="false" aria-controls="tool-sidebar">☰</button>
-        <div><span class="eyebrow">PRIVATE WORKSPACE</span><h1 id="page-title">AveCove Namer</h1></div>
+        <h1 id="page-title">AveCove Namer</h1>
         <a class="home-link" href="/">← 返回聚合页</a>
         <span class="date" id="today"></span>
       </header>
 
       <section class="view" id="view-tmdb">
         <div class="section-head">
-          <div><h2>TMDb 源数据与图片</h2><p>查询剧集，按季查看源语言单集信息、封面和剧照。</p></div>
+          <h2>源数据与图片</h2>
           <div class="segmented" role="group" aria-label="媒体类型">
             <button class="active" data-kind="tv">剧集</button><button data-kind="movie">电影</button>
           </div>
@@ -55,9 +51,23 @@
           <button class="secondary" id="library-search-button" type="button">查我的网盘</button>
           <button class="primary" type="submit">查询</button>
         </form>
-        <div class="notice">输入名称会同时查询 TMDb 和你的网盘；也可以只点“查我的网盘”。</div>
+        <div id="library-search-result" class="availability-card idle"><span>收藏检查</span><strong>输入资源名称，看看是否已经收藏</strong></div>
+        <div id="tmdb-workspace" class="tmdb-workspace">
+          <div id="tmdb-result" class="result-space empty-state"><span class="empty-icon">⌕</span><p>输入名称或 ID 开始查询</p></div>
+          <aside id="tmdb-artwork" class="tmdb-artwork" hidden aria-label="剧集封面与剧照" aria-live="polite"></aside>
+        </div>
+        <details class="namer-utilities" id="tmdb-history">
+          <summary>◉ 识别记录</summary>
+          <div class="section-actions history-actions"><button class="secondary automation-toggle" id="automation-toggle" type="button" disabled>自动扫描：读取中</button><button class="secondary" id="reload-detective">↻ 刷新记录</button></div>
+          <div id="detective-summary" class="stats"></div>
+          <div id="manual-history" class="history-section"></div>
+          <div id="detective-result" class="result-space empty-state"><p>正在读取记录</p></div>
+        </details>
+      </section>
+
+      <section class="view" id="view-shelf">
         <section class="series-shelf saved-shows" aria-label="我的剧集与观看时间线">
-          <div class="result-toolbar"><div><span class="page-kicker">YOUR SERIES</span><h3>我的剧集 <small id="shelf-count"></small></h3></div><button type="button" class="mini-button" id="shelf-reload">↻ 刷新</button></div>
+          <div class="result-toolbar"><h2>我的剧集 <small id="shelf-count"></small></h2><button type="button" class="mini-button" id="shelf-reload" title="刷新剧集" aria-label="刷新剧集">↻</button></div>
           <div class="shelf-filters" role="group" aria-label="筛选剧集与观看时间线">
             <button type="button" class="mini-button" data-shelf-filter="all" aria-pressed="true">全部</button>
             <button type="button" class="mini-button" data-shelf-filter="queued" aria-pressed="false">🕒 待看</button>
@@ -67,20 +77,14 @@
             <button type="button" class="mini-button" data-shelf-filter="archived" aria-pressed="false">📦 归档</button>
           </div>
           <div id="series-shelf-list" aria-live="polite">正在读取…</div>
-          <p class="shelf-credit">海报与剧照来自 TMDb · 已观看按完成日期倒序排列，日期可修改；这是你标记的观看记录，不代表剧集已完结。</p>
         </section>
-        <div id="library-search-result" class="availability-card idle"><span>收藏检查</span><strong>输入资源名称，看看是否已经收藏</strong></div>
-        <div id="tmdb-workspace" class="tmdb-workspace">
-          <div id="tmdb-result" class="result-space empty-state"><span class="empty-icon">⌕</span><p>输入名称或 ID 开始查询</p></div>
-          <aside id="tmdb-artwork" class="tmdb-artwork" hidden aria-label="剧集封面与剧照" aria-live="polite"></aside>
-        </div>
       </section>
 
       <section class="view active" id="view-namer">
-        <div class="section-head"><div><span class="page-kicker">NAMER WORKBENCH</span><h2>Namer 改名工作台</h2><p>展开目录、跨盘勾选，再统一预览与确认改名；不再全盘扫描。</p></div><div class="section-actions"><span class="safe-badge">确认后执行</span><button class="secondary" id="namer-directory-reload" type="button">↻ 重新扫描目录</button></div></div>
+        <div class="section-head"><h2>改名工作台</h2><div class="section-actions"><button class="secondary" id="namer-directory-reload" type="button">↻ 重新扫描目录</button></div></div>
         <div class="queue-toolbar batch-priority" aria-label="跨盘批量改名"><div><strong>跨盘批量改名</strong><span id="namer-queue-count" aria-live="polite">尚未选择项目</span></div><div class="section-actions"><button class="secondary" id="namer-clear-queue" type="button" disabled>清空选择</button><button class="primary" id="namer-plan-queue" type="button" disabled>批量生成预览 →</button></div></div>
         <div id="namer-selected" class="namer-selected" hidden aria-label="已选择的作品"></div>
-        <div class="workflow-divider"><span>SELECT DIRECTORIES</span><small>勾选加入队列 · 点击名称可单独识别 · 每批最多 30 项</small></div>
+        <div class="workflow-divider"><span>目录</span></div>
         <div class="manual-workbench">
           <div class="path-presets grouped-presets namer-presets" id="namer-presets" aria-label="Namer 常用路径"></div>
           <form class="form-card" id="namer-form">
@@ -94,18 +98,12 @@
           </form>
         </div>
         <div id="namer-result" class="result-space empty-state"><span class="empty-icon">✦</span><p>输入具体作品路径，先识别再预览</p></div>
-        <details class="namer-utilities" id="namer-utilities"><summary>辅助目录与更新日志 <small>收录通知 · LitePan / Vesta</small></summary>
+        <details class="namer-utilities" id="namer-utilities"><summary>辅助工具</summary>
           <div class="queue-toolbar utility-log"><div><strong>📥 收录通知 · skill / Hermes</strong><span id="handoff-status" aria-live="polite">展开后读取；通知不会自动改名</span></div><div class="section-actions"><button type="button" class="secondary" id="handoff-reload">刷新通知</button><button type="button" class="secondary" id="handoff-ack" disabled>本批已处理 / 忽略</button><button type="button" class="primary" id="handoff-add" disabled>加入批量队列</button></div></div>
           <div class="queue-toolbar utility-log"><div><strong>LitePan · Vesta 更新日志</strong><span id="litepan-changes-status" aria-live="polite">展开后读取更新记录</span></div><div class="section-actions"><button type="button" class="secondary" id="litepan-changes-reload">刷新变化</button><button type="button" class="secondary" id="litepan-changes-ack" disabled>本批已处理 / 忽略</button><button type="button" class="secondary" id="litepan-changes-add" disabled>加入本批更新</button></div></div>
         </details>
       </section>
 
-      <section class="view" id="view-detective">
-        <div class="section-head"><div><h2>识别记录</h2><p>最近 20 条手动识别，以及自动检测结果与待审核项目。</p></div><div class="section-actions"><button class="secondary automation-toggle" id="automation-toggle" type="button" disabled>自动扫描：读取中</button><button class="secondary" id="reload-detective">刷新记录</button></div></div>
-        <div id="detective-summary" class="stats"></div>
-        <div id="manual-history" class="history-section"></div>
-        <div id="detective-result" class="result-space empty-state"><span class="empty-icon">◉</span><p>正在读取记录</p></div>
-      </section>
 
     </main>
   </div>
@@ -150,6 +148,6 @@
     </form>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=0.7.11" defer></script>
+  <script src="app.js?v=0.7.12" defer></script>
 </body>
 </html>

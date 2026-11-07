@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const titles = { tmdb: 'TMDb 查询', namer: 'AveCove Namer', detective: '识别记录' };
+const titles = { tmdb: 'TMDb 查询', namer: 'AveCove Namer', shelf: '风花雪月' };
 let mediaKind = 'tv';
 let lastSourceData = null;
 let savedSeries = new Map();
@@ -307,13 +307,15 @@ function presetMarkup() {
 $('#namer-presets').innerHTML = presetMarkup();
 
 function switchView(name) {
+  const history = name === 'detective';
+  if (history) name = 'tmdb';
   if (!Object.hasOwn(titles, name)) name = 'namer';
   $$('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.view === name));
   $$('.view').forEach(view => view.classList.toggle('active', view.id === `view-${name}`));
   $('#page-title').textContent = titles[name];
   closeMobileNav();
   location.hash = name;
-  if (name === 'detective') { loadDetective(); loadAutomationStatus(); }
+  if (history) $('#tmdb-history').open = true;
 }
 
 $$('.nav-item').forEach(item => item.addEventListener('click', () => switchView(item.dataset.view)));
@@ -1026,13 +1028,12 @@ async function pollNamerBatchJob(jobId) {
 
 
 async function checkHealth() {
+  const dot=$('#service-status');let ok=false;
   try {
-    await api('/api/health');
-    $('.status-dot').classList.add('ok');
-    $('#service-status').textContent = '服务运行正常';
-  } catch {
-    $('#service-status').textContent = '服务连接异常';
-  }
+    ok=(await api('/api/health')).status==='ok';
+  } catch {}
+  dot.classList.toggle('ok',ok);dot.classList.toggle('offline',!ok);
+  dot.title=ok?'服务正常':'连接异常';dot.setAttribute('aria-label',dot.title);
 }
 
 let litepanChanges = [];
@@ -1079,9 +1080,13 @@ $('#today').textContent = new Intl.DateTimeFormat('zh-CN', {month:'long', day:'n
 applyScene();
 setInterval(applyScene, 300000);
 const initial = location.hash.slice(1);
+$('#tmdb-history').addEventListener('toggle', () => {
+  if ($('#tmdb-history').open) { loadDetective(); loadAutomationStatus(); }
+});
 switchView(initial);
 updateNamerQueue();
 checkHealth();
+setInterval(checkHealth,60000);
 $('#namer-utilities').addEventListener('toggle', () => {
   if ($('#namer-utilities').open) { loadLitepanChanges(); loadHandoffInbox(); }
 });

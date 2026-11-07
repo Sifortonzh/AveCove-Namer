@@ -1,5 +1,9 @@
 # Changelog / 更新记录
 
+## 0.7.12 — 2026-11-07
+
+- Separate the personal series shelf from search, fold identification history into TMDb, and simplify headings and service status.
+
 ## 0.7.11 — 2026-11-06
 
 - Page/list-scoped browser-persistent pins and star-only personal ratings; keep timeline dates unchanged.

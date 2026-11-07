@@ -543,3 +543,7 @@ html[data-scene="night"] .saved-shows { --shelf-purple:#c0abff; --shelf-veil:#17
 .item-pin{min-width:36px;min-height:40px;padding:5px;font-size:17px}.item-pin[aria-pressed=true]{background:color-mix(in srgb,var(--accent) 15%,var(--surface));border-color:var(--accent)}
 .search-item,.event-item{position:relative;padding-right:62px}.search-item>.item-pin,.event-item>.item-pin{position:absolute;right:12px;top:12px}
 .path-presets .preset-work>.item-pin{flex:0 0 36px;padding:4px;min-height:40px}
+.brand .status-dot{flex:0 0 7px;margin-left:0}.brand .status-dot.offline{background:#db5165;box-shadow:0 0 0 4px rgb(219 81 101 / .14)}
+.topbar h1{letter-spacing:-.035em}.section-head h2,#view-shelf h2{color:var(--text);margin:0;font-size:clamp(22px,3vw,29px);letter-spacing:-.035em}
+#view-shelf .saved-shows{margin:0}#view-shelf h2 small{font-size:12px;color:var(--muted);font-weight:500;margin-left:8px}
+#tmdb-history .history-actions{margin:14px 0 12px}

@@ -128,6 +128,12 @@ assert.deepEqual(JSON.parse(calls.at(-1).options.body), {id:'99',title:'Test ser
 assert.equal(element('#watched-dialog').open,false);
 assert.equal(vm.runInContext('JSON.stringify(watchedShelfItems([{id:"99",watched:true,watchedDate:"2025-02-01",seasonCompletions:{"1":{watchedDate:"2025-01-01"},"2":{watchedDate:"2025-03-01",personalStars:4}}}]).map(x=>x.completedSeason))',context),'[2,null,1]');
 assert.equal(context.location.hash, 'namer', 'Old Emby bookmark falls back to Namer');
+vm.runInContext('switchView("shelf")',context);
+assert.equal(element('#page-title').textContent,'风花雪月');
+vm.runInContext('switchView("detective")',context);
+assert.equal(context.location.hash,'tmdb');
+assert.equal(element('#tmdb-history').open,true);
+vm.runInContext('switchView("namer")',context);
 assert.equal(element('#page-title').textContent, 'AveCove Namer');
 assert.doesNotMatch(fs.readFileSync(new URL('../src/avecove_namer/web/index.html', import.meta.url), 'utf8'), /scout-workbench|巡影收录目录|AveCove Media Tools/);
 element('#mobile-menu').listeners.click();

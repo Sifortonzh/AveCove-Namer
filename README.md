@@ -4,7 +4,9 @@ Reviewable cloud media naming, original-language TMDb metadata, and a personal s
 
 [简体中文](README.zh-CN.md) · [Release workflow](docs/releases.md) · [Changelog](CHANGELOG.md)
 
-## Current release: 0.7.11
+## Current release: 0.7.12
+
+- Dedicated series shelf and watch timeline, separated from TMDb search. Identification history collapses under TMDb; the sidebar brand shows service health with a compact status dot.
 
 - Independent 📌 pins for Namer resource folders, TMDb results/shelf filters and identification lists. Stored in the current browser; no cross-device sync. Timeline pins get a separate group without changing completion dates. Personal ratings display their exact star count.
 

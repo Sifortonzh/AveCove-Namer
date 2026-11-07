@@ -1,5 +1,9 @@
 # Namer 2026-11-01 update
 
+## 2026-11-07: 0.7.12 navigation
+
+- Notes requested separate 风花雪月 shelf, TMDb-only query workspace with collapsed history, and compact health status by brand. Old detective URL opens the same fold; saved data and existing APIs are unchanged. GuangYa scan scheduling is handled independently by the LitePan bridge.
+
 ## 2026-11-06: 0.7.11 pins and stars
 
 - Page/list namespaces in browser localStorage, safe memory fallback. Pin folders within loaded category; TMDb results (kind+ID), saved filters and identification lists independently. Keep index-based action identities attached when DOM reorders. Timeline pinned group retains dates.
