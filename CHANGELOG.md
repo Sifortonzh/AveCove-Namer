@@ -1,5 +1,9 @@
 # Changelog / 更新记录
 
+## 0.7.13 — 2026-11-07
+
+- Add scene-aware liquid-glass chrome, with solid reduced-transparency and unsupported-browser fallbacks.
+
 ## 0.7.12 — 2026-11-07
 
 - Separate the personal series shelf from search, fold identification history into TMDb, and simplify headings and service status.

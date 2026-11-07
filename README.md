@@ -4,7 +4,9 @@ Reviewable cloud media naming, original-language TMDb metadata, and a personal s
 
 [简体中文](README.zh-CN.md) · [Release workflow](docs/releases.md) · [Changelog](CHANGELOG.md)
 
-## Current release: 0.7.12
+## Current release: 0.7.13
+
+- Liquid-glass navigation, search and batch controls, and dialogs follow the four existing scenes. Dense results and posters retain their original appearance; browsers without blur support or with reduced transparency enabled get solid panels.
 
 - Dedicated series shelf and watch timeline, separated from TMDb search. Identification history collapses under TMDb; the sidebar brand shows service health with a compact status dot.
 
