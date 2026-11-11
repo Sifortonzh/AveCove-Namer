@@ -5,6 +5,24 @@ from avecove_namer.shelf import SeriesShelf
 
 
 class ShelfTests(unittest.TestCase):
+    def test_v3_metadata_upgrade_failure_preserves_logo_and_watch_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            shelf = SeriesShelf(Path(directory)/'shelf.json')
+            shelf.request({'id':'42','action':'watched','enabled':True,'watchedDate':'2025-01-01','personalStars':4})
+            rows=shelf.read()
+            rows['42'].update(artworkVersion=2, logoPath='/old.png', genres=['Drama'])
+            shelf.write(rows)
+            def loader(ident): raise RuntimeError('offline')
+            shelf.metadata_loader=loader
+            shelf.enriching=True
+            shelf.enrich()
+            row=shelf.read()['42']
+            self.assertEqual(row['logoPath'],'/old.png')
+            self.assertEqual(row['artworkVersion'],2)
+            self.assertEqual(row['personalStars'],4)
+            self.assertEqual(row['watchedDate'],'2025-01-01')
+            self.assertIn('artworkRetryAt',row)
+
     def test_archive_and_restore_keep_every_saved_field(self):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'shelf.json';shelf=SeriesShelf(path)

@@ -64,7 +64,7 @@ class SeriesShelf:
             with self.lock:
                 pending = [row['id'] for row in self.read().values()
                            if row.get('artworkRetryAt', 0) <= time.time()
-                           and (row.get('artworkVersion') != 2 or row.get('artworkUpdatedAt', 0) < time.time() - 86400)][:20]
+                           and (row.get('artworkVersion') != 3 or row.get('artworkUpdatedAt', 0) < time.time() - 86400)][:20]
             for ident in pending:
                 try:
                     metadata = self.metadata_loader(int(ident))
@@ -77,7 +77,7 @@ class SeriesShelf:
                     if metadata is not None:
                         current[ident].update(metadata)
                         current[ident]['artworkUpdatedAt'] = int(time.time())
-                        current[ident]['artworkVersion'] = 2
+                        current[ident]['artworkVersion'] = 3
                         current[ident].pop('artworkRetryAt', None)
                     else:
                         current[ident]['artworkRetryAt'] = int(time.time()) + 300
@@ -161,7 +161,7 @@ class SeriesShelf:
                     rows.pop(ident, None)
                 self.write(rows)
             if self.metadata_loader and not self.enriching and any(
-                    row.get('artworkRetryAt', 0) <= time.time() and (row.get('artworkVersion') != 2 or row.get('artworkUpdatedAt', 0) < time.time() - 86400)
+                    row.get('artworkRetryAt', 0) <= time.time() and (row.get('artworkVersion') != 3 or row.get('artworkUpdatedAt', 0) < time.time() - 86400)
                     for row in rows.values()):
                 self.enriching = True
                 threading.Thread(target=self.enrich, daemon=True).start()

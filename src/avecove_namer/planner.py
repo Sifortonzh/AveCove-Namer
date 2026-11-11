@@ -167,6 +167,17 @@ def make_plan(
         if folder_season and parsed.kind in {"episode", "disc"} and parsed.season != folder_season:
             parsed = replace(parsed, season=folder_season)
         context_title, context_year = infer_context(entry.path)
+        if media_kind != "tv" and PurePosixPath(entry.name).stem.isdecimal():
+            # A numeric child is not a reliable movie identity or release year.
+            # Keep verified overrides first, then consult the actual parent folder.
+            parent = parse_media_name(PurePosixPath(entry.parent).name + ".mkv")
+            parent_title = parent.title if parent.title and not parent.title.isdecimal() else None
+            context_title = context_title or parent_title
+            context_year = context_year or parent.year
+            if not (title_override or context_title):
+                plan.skipped.append({"path": entry.path, "reason": "numeric_movie_identity_missing"})
+                continue
+            parsed = replace(parsed, title=context_title, year=context_year)
         resolved_title = title_override or context_title or parsed.title
         resolved_year = year_override or context_year or parsed.year
         if parsed.kind in {"episode", "disc"} and policy.include_series_year and not resolved_year:

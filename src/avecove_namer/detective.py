@@ -334,6 +334,8 @@ def movie_search_candidates(folder_name: str, entries: list[Entry]) -> list[tupl
     for entry in entries:
         if extension_of(entry.name) not in VIDEO_EXTENSIONS:
             continue
+        if PurePosixPath(entry.name).stem.isdecimal() and folder_candidate[0] and not folder_candidate[0].isdecimal():
+            continue
         parsed = parse_media_name(entry.name)
         if parsed.kind == "movie" and parsed.title:
             file_candidates.extend((title, parsed.year) for title in movie_title_variants(parsed.title))

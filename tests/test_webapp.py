@@ -17,12 +17,17 @@ class WebAppTests(unittest.TestCase):
             {'posters':[
                 {'file_path':'/translated.jpg','iso_639_1':'zh','vote_count':100,'vote_average':10},
                 {'file_path':'/source.jpg','iso_639_1':'ko','vote_count':1,'vote_average':7}],
-             'backdrops':[{'file_path':'/plain.jpg','iso_639_1':None}]}
+             'backdrops':[{'file_path':'/plain.jpg','iso_639_1':None}],
+             'logos':[{'file_path':'/logo.png','iso_639_1':'ko'}]},
+            {'genres':[{'name':'드라마'}]}
         ]
         row = app.shelf_metadata(42)
         self.assertEqual(row['posterPath'], '/source.jpg')
         self.assertEqual(row['backdropPath'], '/plain.jpg')
         self.assertEqual(row['originalTitle'], '원제')
+        self.assertEqual(row['logoPath'], '/logo.png')
+        self.assertEqual(row['genres'], ['드라마'])
+        client._get.assert_called_with('/tv/42', {'language':'ko'})
 
     def test_single_episode_input_validation(self):
         from unittest.mock import Mock

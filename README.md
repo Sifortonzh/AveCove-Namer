@@ -4,7 +4,23 @@ Reviewable cloud media naming, original-language TMDb metadata, and a personal s
 
 [简体中文](README.zh-CN.md) · [Release workflow](docs/releases.md) · [Changelog](CHANGELOG.md)
 
-## Current release: 0.7.13
+## Current release: 0.7.14
+
+- Namer / TMDb / Favorite: folder-first identification for numeric movie filenames; copy a scraper-friendly original title and year. Favorite uses original-language genres, regional classification badges and original-language title logos when available.
+
+## Three workspaces
+
+| Workspace | Workflow |
+| --- | --- |
+| Namer | Expand selected LitePan directories, select across drives, identify, preview, explicitly confirm. Numeric movie children defer to the parent; uncertain identities stay skipped or reviewable. |
+| TMDb | Find movies or shows; copy the original title, brief filename, tagged directory or ID. For shows, inspect seasons, episodes and source artwork. |
+| Favorite | Independently track Favorite, Watching and Watch Later; record progress, personal stars and completion dates; archive without losing the timeline. |
+
+Favorite metadata refreshes in bounded background batches. Source-language genres and logos use existing server-side TMDb credentials; missing or failed logos fall back to text. Existing cached data survives request failures and retries after five minutes. Classification badges always retain their region; color is not a universal age rating.
+
+Watch records persist on the configured server and are shared by browsers accessing that same installation; pins are browser-local. This personal installation does not provide per-user shelf isolation. It does not sync a Trakt account, acquire media, or automatically apply rename plans.
+
+## Features
 
 - Liquid-glass navigation, search and batch controls, and dialogs follow the four existing scenes. Dense results and posters retain their original appearance; browsers without blur support or with reduced transparency enabled get solid panels.
 
@@ -39,7 +55,7 @@ Reviewable cloud media naming, original-language TMDb metadata, and a personal s
 - **Focused UI:** a prominent cross-drive batch queue; acquisition notifications and LitePan/Vesta updates live in a collapsed auxiliary panel. Mobile layout and dark/light scenes are included. Scout integration has been retired.
 - **Release visibility:** `/api/health` reports the software version, deployed Git revision, and active job count.
 
-OpenList and Emby compatibility code remains for older installations. The current web navigation has **Namer / TMDb / Records**, not an Emby refresh page. Naming does not automatically trigger Emby refreshes. Optional historical integrations must be configured separately.
+OpenList and Emby compatibility code remains for older installations. The current web navigation has **Namer / TMDb / Favorite**, not an Emby refresh page. Naming does not automatically trigger Emby refreshes. Optional historical integrations must be configured separately.
 
 ## Run and test
 

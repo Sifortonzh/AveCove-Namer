@@ -325,6 +325,9 @@ class App:
         language = str(details.get('original_language') or '')
         images = client._get(f'/tv/{ident}/images', {})
         summary = series_summary(details)
+        if language and language not in {'zh', 'zh-CN'}:
+            source = client._get(f'/tv/{ident}', {'language': language})
+            summary['genres'] = series_summary(source)['genres']
         primary = next(iter(summary['content_ratings']), {})
         def image_path(value):
             return value if isinstance(value, str) and re.fullmatch(r'/[\w-]+\.(?:jpg|png|webp)', value) else ''
@@ -340,6 +343,7 @@ class App:
                 'translatedTitle': str(details.get('name') or ''),
                 'posterPath': source_image('posters', details.get('poster_path')),
                 'backdropPath': source_image('backdrops', details.get('backdrop_path')),
+                'logoPath': source_image('logos', ''),
                 'artworkLanguage': language,
                 'year': str(details.get('first_air_date') or '')[:4],
                 'rating': float(details.get('vote_average') or 0),

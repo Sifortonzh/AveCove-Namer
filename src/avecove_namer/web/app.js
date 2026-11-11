@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const titles = { tmdb: 'TMDb 查询', namer: 'AveCove Namer', shelf: '风花雪月' };
+const titles = { tmdb: 'TMDb', namer: 'Namer', shelf: 'Favorite' };
 let mediaKind = 'tv';
 let lastSourceData = null;
 let savedSeries = new Map();
@@ -24,6 +24,16 @@ function pinCards(nodes,scope,keyFor){
   cards.forEach(card=>card.append(pinButton(scope,keyFor(card),reorder)));reorder();
 }
 function personalStars(value){const n=Number(value);return Number.isInteger(n)&&n>=1&&n<=5?'★'.repeat(n):''}
+function briefFilename(item) {
+  const title = String(item.original_title || item.title || '').trim();
+  const year = /^\d{4}$/.test(String(item.year || '')) ? ` (${item.year})` : '';
+  return (title + year).replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ').replace(/\s+/g,' ').trim();
+}
+function ratingTone(rating) {
+  if (['TV-MA','R','NC-17','18','18+','19'].includes(String(rating).toUpperCase())) return 'mature';
+  if (['G','PG','TV-G','TV-PG','TV-Y','TV-Y7','U'].includes(String(rating).toUpperCase())) return 'general';
+  return 'neutral';
+}
 function watchDateToday() { return new Date(Date.now() + 8 * 3600000).toISOString().slice(0,10); }
 function watchedShelfItems(items) {
   return items.flatMap(item => [
@@ -162,9 +172,23 @@ function renderShelf(items) {
     poster.onclick = () => openEpisodeDialog(item.id, name);
     const content = document.createElement('div'); content.className = 'shelf-info';
     const title = document.createElement('button'); title.className = 'shelf-title'; title.type = 'button'; title.textContent = name; title.title = name; title.onclick = () => openEpisodeDialog(item.id, name);
+    const logoURL = imageURL(item.logoPath, 'w500');
+    if (logoURL) {
+      title.classList.add('shelf-title-with-logo');
+      const logo = document.createElement('img'); logo.className = 'shelf-title-logo'; logo.src = logoURL; logo.alt = name; logo.loading = 'lazy';
+      logo.onerror = () => { title.textContent = name; title.classList.remove('shelf-title-with-logo'); };
+      title.textContent = ''; title.append(logo);
+    }
     const translated = document.createElement('p'); translated.className = 'shelf-subtitle'; translated.textContent = item.translatedTitle && item.translatedTitle !== name ? item.translatedTitle : ''; translated.hidden = !translated.textContent;
-    const meta = document.createElement('p'); meta.className = 'shelf-meta'; meta.textContent = [item.year, item.rating > 0 ? `TMDb ${Number(item.rating).toFixed(1)}` : '', item.certification ? `${item.certificationCountry || '地区未标注'} · ${item.certification}` : '暂无内容分级'].filter(Boolean).join(' · ');
-    const genre = document.createElement('p'); genre.className = 'shelf-genre'; genre.textContent = `类型：${(item.genres || []).join(' · ') || 'TMDb 暂未提供'}${item.series_type ? ` · ${item.series_type}` : ''}`;
+    const meta = document.createElement('p'); meta.className = 'shelf-meta'; meta.textContent = [item.year, item.rating > 0 ? `TMDb ${Number(item.rating).toFixed(1)}` : ''].filter(Boolean).join(' · ');
+    const genre = document.createElement('div'); genre.className = 'shelf-badges';
+    if (item.certification) {
+      const badge = document.createElement('span'); badge.className = 'shelf-badge rating-' + ratingTone(item.certification);
+      badge.textContent = `${item.certificationCountry || '地区未标注'} · ${item.certification}`; genre.append(badge);
+    }
+    for (const label of [...(item.genres || []), ...(item.series_type ? [item.series_type] : [])]) {
+      const badge = document.createElement('span'); badge.className = 'shelf-badge'; badge.textContent = label; genre.append(badge);
+    }
     const counts = document.createElement('p'); counts.className = 'shelf-genre'; counts.textContent = `${Number.isInteger(item.season_count) ? `${item.season_count} 季` : '季数待补充'}${Number.isInteger(item.episode_count) ? ` · 正式集 ${item.episode_count} 集` : ''}${item.has_specials ? ' · 另含特别篇' : ''}`;
     const progress = document.createElement('p'); progress.className = 'shelf-progress'; progress.textContent = `${timeline ? completionLabel(item.completedSeason)+'已看' : item.watched ? '全剧已看' + (item.watching ? ' · 重看中' : '') : item.watching ? '在看' : Object.keys(item.seasonCompletions || {}).length ? '已有分季完看记录' : '已收藏'}${!timeline&&item.season !== undefined ? ` · 上次查询 S${String(item.season).padStart(2,'0')}E${String(item.episode).padStart(2,'0')}` : ''}`;
     const actions = document.createElement('div'); actions.className = 'shelf-quick-actions';
@@ -427,6 +451,11 @@ function renderSearch(results, kind) {
     if (index === 0) details.open = true;
   });
   $$('.source-button').forEach(button => button.addEventListener('click', () => loadSource(button.dataset.id)));
+  target.querySelectorAll('.search-item').forEach((card, index) => {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'mini-button copy-brief-button'; button.textContent = '复制简略文件名';
+    button.onclick = async () => { await navigator.clipboard.writeText(briefFilename(results[index])); toast('简略文件名已复制'); };
+    card.querySelector('.actions').append(button);
+  });
   target.querySelectorAll('.search-item').forEach((card, index) => { const item = results[index]; if ((item.kind || kind) === 'tv') card.querySelector('.actions').append(shelfActions(item.id, item.original_title || item.title)); });
   const searchCards=[...target.querySelectorAll('.search-item')];searchCards.forEach((card,index)=>card.dataset.pinIdentity=`${results[index].kind||kind}:${results[index].id}`);
   pinCards(searchCards,'tmdb-search',card=>card.dataset.pinIdentity);

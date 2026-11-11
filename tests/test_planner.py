@@ -7,6 +7,15 @@ from avecove_namer.planner import _season_from_folder, make_plan, normalized_sea
 
 
 class PlannerTests(unittest.TestCase):
+    def test_numeric_movie_uses_parent_not_digits_as_year(self):
+        plan = make_plan([Entry("/Movies/Example (2000)/2024.mp4")],
+                         "/Movies/Example (2000)", "litepan", NamingPolicy(), media_kind="movie")
+        self.assertEqual(plan.operations[0].target, "/Movies/Example (2000)/Example.2000.mp4")
+        unknown = make_plan([Entry("/Movies/12345/2024.mp4")], "/Movies/12345",
+                            "litepan", NamingPolicy(), media_kind="movie")
+        self.assertFalse(unknown.operations)
+        self.assertEqual(unknown.skipped[0]['reason'], 'numeric_movie_identity_missing')
+
     def test_long_season_collection_keeps_titles_and_three_digit_order(self):
         self.assertEqual(_season_from_folder("Season 458 - 品读中华经典诗文（第二季）"), 458)
         self.assertEqual(normalized_season_folder_name("Season 004 - 智慧的痛苦", 3), "Season 004 - 智慧的痛苦")

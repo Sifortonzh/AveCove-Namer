@@ -17,6 +17,11 @@ from avecove_namer.models import Entry, RenameOperation, RenamePlan
 
 
 class DetectiveTests(unittest.TestCase):
+    def test_numeric_movie_children_use_parent_identity(self):
+        candidates = movie_search_candidates("In the Mood for Love", [Entry("/Movies/In the Mood for Love/123456789.mp4")])
+        self.assertEqual(candidates[0][0], "In the Mood for Love")
+        self.assertFalse(any(title == "123456789" for title, year in candidates))
+
     def test_parse_watch(self):
         watch = parse_watch("tv:/GuangYa/00剧/01韩")
         self.assertEqual(watch.kind, "tv")

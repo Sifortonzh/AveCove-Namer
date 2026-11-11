@@ -1,5 +1,12 @@
 # Changelog / 更新记录
 
+## 0.7.14 — 2026-11-11
+
+- Rename navigation to Namer / TMDb / Favorite; add brief original-language filename copying.
+- Numeric movie children defer to folder identity and never invent a release year from digits.
+- Refresh shelf metadata to source-language genres and ranked source-language title logos, with regional classification badges and text fallback. Preserve watch state, timelines and valid cache on errors.
+- Expand bilingual documentation with workspace workflows, data persistence and integration limits.
+
 ## 0.7.13 — 2026-11-07
 
 - Add scene-aware liquid-glass chrome, with solid reduced-transparency and unsupported-browser fallbacks.

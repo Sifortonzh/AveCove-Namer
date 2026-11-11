@@ -13,7 +13,7 @@
       document.documentElement.dataset.scene = hour < 5 || hour >= 21 ? 'night' : hour < 11 ? 'morning' : hour < 17 ? 'day' : 'evening';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=0.7.13">
+  <link rel="stylesheet" href="styles.css?v=0.7.14">
 </head>
 <body>
   <div class="shell">
@@ -25,8 +25,8 @@
       </a>
       <nav aria-label="工具导航">
         <button class="nav-item active" data-view="namer"><span>✦</span>Namer</button>
-        <button class="nav-item" data-view="tmdb"><span>⌕</span>TMDb 查询</button>
-        <button class="nav-item" data-view="shelf"><span>✿</span>风花雪月</button>
+        <button class="nav-item" data-view="tmdb"><span>⌕</span>TMDb</button>
+        <button class="nav-item" data-view="shelf"><span>✿</span>Favorite</button>
       </nav>
     </aside>
 
@@ -148,6 +148,6 @@
     </form>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=0.7.13" defer></script>
+  <script src="app.js?v=0.7.14" defer></script>
 </body>
 </html>
