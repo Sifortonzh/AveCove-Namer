@@ -1,5 +1,10 @@
 # Changelog / 更新记录
 
+## 0.7.15 — 2026-11-12
+
+- Dotted brief filenames without year parentheses; genre-specific and additional classification badge colors.
+- Daily atomic directory-only index from existing LitePan/bridge metadata. Local-only lookup with cache timestamps and honest miss states; no cloud scan in the index job.
+
 ## 0.7.14 — 2026-11-11
 
 - Rename navigation to Namer / TMDb / Favorite; add brief original-language filename copying.

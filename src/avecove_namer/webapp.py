@@ -572,6 +572,20 @@ class App:
             raise ValueError("请输入要检查的资源名称")
         if kind not in CLOUD_LIBRARY_ROOTS:
             raise ValueError("媒体类型无效")
+        from .directory_index import INDEX_PATH
+        try:
+            index = json.loads(INDEX_PATH.read_text())
+            if index.get('version') != 1 or not isinstance(index.get('items'), list):
+                raise ValueError('Invalid directory index')
+        except (OSError, ValueError):
+            index = None
+        if index is not None and payload.get('live') is not True:
+            clean, _ = normalized_lookup_query(query)
+            aliases = {normalized_media_name(query), normalized_media_name(clean)} - {''}
+            found = [row for row in index['items'] if row.get('kind') == kind and media_name_matches(row.get('name'), aliases)]
+            return {'found': bool(found), 'matches': found[:20], 'source': 'directory-index',
+                    'indexedAt': index.get('generatedAt'), 'sourceUpdatedAt': index.get('sourceUpdatedAt'),
+                    'message': '目录索引命中' if found else '目录索引未命中，不代表网盘未收录'}
         aliases = self._availability_aliases(query, kind)
         backend = self.openlist()
         matches: list[dict[str, str]] = []

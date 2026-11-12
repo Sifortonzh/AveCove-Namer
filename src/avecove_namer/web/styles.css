@@ -553,6 +553,21 @@ html[data-scene="night"] .saved-shows { --shelf-purple:#c0abff; --shelf-veil:#17
 .shelf-badge { padding:4px 8px; border-radius:7px; border:1px solid var(--line); background:var(--surface-2); color:var(--text); font-size:12px; line-height:1.4; }
 .shelf-badge.rating-mature { color:#a61e39; background:#ffe2e8; border-color:#edb0be; }
 .shelf-badge.rating-general { color:#14623d; background:#ddf5e6; border-color:#a9dabe; }
+.shelf-badge.rating-teen { color:#7e5200; background:#fff0bf; border-color:#e7cb7c; }
+.shelf-badge.rating-restricted { color:#954318; background:#ffe4d1; border-color:#eab590; }
+.shelf-badge.genre-fantasy { color:#55329a; background:#eee4ff; border-color:#cbb6ec; }
+.shelf-badge.genre-mystery { color:#74456d; background:#f3e4f0; border-color:#d6b5ce; }
+.shelf-badge.genre-comedy { color:#836019; background:#fff2cf; border-color:#e6cf94; }
+.shelf-badge.genre-action { color:#98422e; background:#ffe5db; border-color:#e8b4a5; }
+.shelf-badge.genre-drama { color:#285b92; background:#e1efff; border-color:#b0cce8; }
+.shelf-badge.genre-animation { color:#895074; background:#fce4f3; border-color:#e4b6d0; }
+.shelf-badge.genre-documentary { color:#236d68; background:#def3ee; border-color:#a9d3c9; }
+html[data-scene="night"] .shelf-badge.rating-teen, html[data-scene="night"] .shelf-badge.genre-comedy { color:#f5d585; background:#4a3c1c; border-color:#806d3e; }
+html[data-scene="night"] .shelf-badge.rating-restricted, html[data-scene="night"] .shelf-badge.genre-action { color:#ffc29e; background:#512f26; border-color:#94624c; }
+html[data-scene="night"] .shelf-badge.genre-fantasy { color:#d5baff; background:#36264f; border-color:#70558c; }
+html[data-scene="night"] .shelf-badge.genre-mystery, html[data-scene="night"] .shelf-badge.genre-animation { color:#f2b8df; background:#48283f; border-color:#8a5b7e; }
+html[data-scene="night"] .shelf-badge.genre-drama { color:#afd4ff; background:#243950; border-color:#537896; }
+html[data-scene="night"] .shelf-badge.genre-documentary { color:#9de4d4; background:#1d413c; border-color:#4b8178; }
 html[data-scene="night"] .shelf-badge.rating-mature { color:#ffbdcb; background:#522334; border-color:#965166; }
 html[data-scene="night"] .shelf-badge.rating-general { color:#a2ecc2; background:#174b35; border-color:#3e8060; }
 .shelf-title-with-logo { display:block; max-width:100%; padding:8px 12px; border-radius:10px; background:#253340; }

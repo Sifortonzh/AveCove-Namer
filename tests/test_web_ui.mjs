@@ -48,11 +48,17 @@ const context = vm.createContext({
 vm.runInContext(fs.readFileSync(new URL('../src/avecove_namer/web/app.js', import.meta.url), 'utf8'), context);
 assert.equal(vm.runInContext('personalStars(3)',context),'★★★');
 assert.equal(vm.runInContext('personalStars(null)',context),'');
-assert.equal(vm.runInContext('briefFilename({original_title:"花樣年華",title:"花样年华",year:2000})',context),'花樣年華 (2000)');
+assert.equal(vm.runInContext('briefFilename({original_title:"花樣年華",title:"花样年华",year:2000})',context),'花樣年華.2000');
+assert.equal(vm.runInContext('briefFilename({original_title:"The Odesse",year:2026})',context),'The.Odesse.2026');
 assert.equal(vm.runInContext('briefFilename({title:"Example",year:null})',context),'Example');
 assert.equal(vm.runInContext('ratingTone("TV-MA")',context),'mature');
 assert.equal(vm.runInContext('ratingTone("PG")',context),'general');
 assert.equal(vm.runInContext('ratingTone("Unknown")',context),'neutral');
+assert.equal(vm.runInContext('ratingTone("PG-13")',context),'teen');
+assert.equal(vm.runInContext('ratingTone("16+")',context),'restricted');
+assert.equal(vm.runInContext('genreTone("Sci-Fi & Fantasy")',context),'fantasy');
+assert.equal(vm.runInContext('genreTone("Drama")',context),'drama');
+assert.equal(vm.runInContext('genreTone("犯罪")',context),'mystery');
 vm.runInContext('pinTest=pinButton("namer","/115/show",()=>{});pinTest.onclick({preventDefault(){},stopPropagation(){}})',context);
 assert.equal(vm.runInContext('pinned("namer","/115/show")',context),true);
 assert.equal(vm.runInContext('pinned("tmdb-search","/115/show")',context),false);

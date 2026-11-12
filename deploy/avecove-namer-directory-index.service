@@ -1,0 +1,8 @@
+[Unit]
+Description=Namer directory index from local LitePan records
+
+[Service]
+Type=oneshot
+Environment=PYTHONPATH=/opt/docker/avecove-namer/current/src
+ExecStart=/usr/bin/python3 -m avecove_namer.directory_index
+UMask=0077

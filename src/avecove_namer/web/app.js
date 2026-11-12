@@ -26,12 +26,25 @@ function pinCards(nodes,scope,keyFor){
 function personalStars(value){const n=Number(value);return Number.isInteger(n)&&n>=1&&n<=5?'★'.repeat(n):''}
 function briefFilename(item) {
   const title = String(item.original_title || item.title || '').trim();
-  const year = /^\d{4}$/.test(String(item.year || '')) ? ` (${item.year})` : '';
-  return (title + year).replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ').replace(/\s+/g,' ').trim();
+  const year = /^\d{4}$/.test(String(item.year || '')) ? `.${item.year}` : '';
+  return (title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ').trim().replace(/\s+/g,'.') + year);
 }
 function ratingTone(rating) {
   if (['TV-MA','R','NC-17','18','18+','19'].includes(String(rating).toUpperCase())) return 'mature';
   if (['G','PG','TV-G','TV-PG','TV-Y','TV-Y7','U'].includes(String(rating).toUpperCase())) return 'general';
+  if (['PG-13','TV-14','12','12A','12+','13+','14','14+'].includes(String(rating).toUpperCase())) return 'teen';
+  if (['15','15+','16','16+','MA15+'].includes(String(rating).toUpperCase())) return 'restricted';
+  return 'neutral';
+}
+function genreTone(label) {
+  const value = String(label).toLowerCase();
+  if (/sci-fi|fantasy|科幻|奇幻|ファンタジー|판타지/.test(value)) return 'fantasy';
+  if (/crime|mystery|thriller|犯罪|悬疑|懸疑|미스터리/.test(value)) return 'mystery';
+  if (/comedy|喜剧|喜劇|コメディ|코미디/.test(value)) return 'comedy';
+  if (/action|adventure|动作|動作|冒险|冒險/.test(value)) return 'action';
+  if (/drama|剧情|劇情|ドラマ|드라마/.test(value)) return 'drama';
+  if (/animation|动画|動畫|アニメ|애니/.test(value)) return 'animation';
+  if (/documentary|纪录|紀錄|ドキュメンタリー/.test(value)) return 'documentary';
   return 'neutral';
 }
 function watchDateToday() { return new Date(Date.now() + 8 * 3600000).toISOString().slice(0,10); }
@@ -187,7 +200,7 @@ function renderShelf(items) {
       badge.textContent = `${item.certificationCountry || '地区未标注'} · ${item.certification}`; genre.append(badge);
     }
     for (const label of [...(item.genres || []), ...(item.series_type ? [item.series_type] : [])]) {
-      const badge = document.createElement('span'); badge.className = 'shelf-badge'; badge.textContent = label; genre.append(badge);
+      const badge = document.createElement('span'); badge.className = 'shelf-badge genre-' + genreTone(label); badge.textContent = label; genre.append(badge);
     }
     const counts = document.createElement('p'); counts.className = 'shelf-genre'; counts.textContent = `${Number.isInteger(item.season_count) ? `${item.season_count} 季` : '季数待补充'}${Number.isInteger(item.episode_count) ? ` · 正式集 ${item.episode_count} 集` : ''}${item.has_specials ? ' · 另含特别篇' : ''}`;
     const progress = document.createElement('p'); progress.className = 'shelf-progress'; progress.textContent = `${timeline ? completionLabel(item.completedSeason)+'已看' : item.watched ? '全剧已看' + (item.watching ? ' · 重看中' : '') : item.watching ? '在看' : Object.keys(item.seasonCompletions || {}).length ? '已有分季完看记录' : '已收藏'}${!timeline&&item.season !== undefined ? ` · 上次查询 S${String(item.season).padStart(2,'0')}E${String(item.episode).padStart(2,'0')}` : ''}`;
@@ -389,11 +402,13 @@ async function checkLibrary(query) {
     return;
   }
   target.className = 'availability-card checking';
-  target.innerHTML = '<span>正在查询</span><strong>正在轻量检查各网盘目录…</strong>';
+  target.innerHTML = '<span>正在查询</span><strong>正在检索目录记录…</strong>';
   try {
     const data = await api('/api/library/search', {query, kind: mediaKind});
     target.className = `availability-card ${data.found ? 'found' : 'missing'}`;
-    target.innerHTML = `<div><span>${data.found ? '已收藏' : '暂未收藏'}</span><strong>${escapeHtml(data.message)}</strong></div>${data.matches.length ? `<div class="availability-paths">${data.matches.map(item => `<button class="availability-path" type="button" data-path="${escapeHtml(item.path)}"><b>${escapeHtml(item.provider)}</b><small>${escapeHtml(item.path)}</small></button>`).join('')}</div>` : '<p>目前在已接入的网盘目录中没有找到匹配资源。</p>'}`;
+    const indexed = data.source === 'directory-index';
+    const stamp = indexed && data.indexedAt ? new Date(data.indexedAt * 1000).toLocaleString() : '';
+    target.innerHTML = `<div><span>${indexed ? '目录索引' : data.found ? '已收藏' : '暂未收藏'}</span><strong>${escapeHtml(data.message)}</strong>${stamp ? `<p>更新：${escapeHtml(stamp)} · 缓存记录，不代表实时状态</p>` : ''}</div>${data.matches.length ? `<div class="availability-paths">${data.matches.map(item => `<button class="availability-path" type="button" data-path="${escapeHtml(item.path)}"><b>${escapeHtml(item.provider)}</b><small>${escapeHtml(item.path)}</small></button>`).join('')}</div>` : `<p>${indexed ? '未命中仅表示当前目录记录中没有匹配项。' : '目前在已接入的网盘目录中没有找到匹配资源。'}</p>`}`;
     $$('.availability-path').forEach(button => button.addEventListener('click', async () => {
       await navigator.clipboard.writeText(button.dataset.path);
       toast('网盘路径已复制');

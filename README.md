@@ -4,7 +4,10 @@ Reviewable cloud media naming, original-language TMDb metadata, and a personal s
 
 [简体中文](README.zh-CN.md) · [Release workflow](docs/releases.md) · [Changelog](CHANGELOG.md)
 
-## Current release: 0.7.14
+## Current release: 0.7.15
+
+- Brief filenames use dotted source titles and years (`The.Odesse.2026`), without year parentheses. Common genres and regional classifications have distinct light/dark badge colors.
+- Optional daily directory index: install the service and timer under `deploy/avecove-namer-directory-index.*`. At 03:15 Asia/Shanghai it atomically summarizes existing local LitePan/bridge directory records without cloud calls. Run the service once after installation. An installed index makes lookup local-only by default, including misses; timestamps describe a cached location, not current existence. Missing/corrupt indexes retain legacy lookup compatibility.
 
 - Namer / TMDb / Favorite: folder-first identification for numeric movie filenames; copy a scraper-friendly original title and year. Favorite uses original-language genres, regional classification badges and original-language title logos when available.
 
