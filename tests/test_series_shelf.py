@@ -5,6 +5,29 @@ from avecove_namer.shelf import SeriesShelf
 
 
 class ShelfTests(unittest.TestCase):
+    def test_episode_favorites_persist_independently_and_preserve_progress(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'shelf.json'
+            shelf=SeriesShelf(path)
+            bookmark={'id':'42','action':'episodeFavorite','season':0,'episode':1,'enabled':True,'name':'Special'}
+            row=shelf.request(bookmark)['items'][0]
+            self.assertIn('S00E01',row['episodeFavorites'])
+            self.assertFalse(row['favorite'])
+            shelf.request({'id':'42','action':'progress','season':2,'episode':4})
+            shelf.request({'id':'42','action':'watched','enabled':True,'watchedDate':'2025-01-01','personalStars':4})
+            shelf=SeriesShelf(path)
+            row=shelf.request({**bookmark,'season':3,'episode':2})['items'][0]
+            self.assertEqual((row['season'],row['episode']),(2,4))
+            self.assertEqual(row['personalStars'],4)
+            self.assertEqual(len(row['episodeFavorites']),2)
+            row=shelf.request({**bookmark,'enabled':False})['items'][0]
+            self.assertNotIn('S00E01',row['episodeFavorites'])
+            self.assertIn('S03E02',row['episodeFavorites'])
+            original=path.read_text()
+            for invalid in ({'season':True},{'episode':0},{'episode':'2'},{'enabled':1},{'season':-1}):
+                with self.assertRaises(ValueError): shelf.request({**bookmark,**invalid})
+                self.assertEqual(path.read_text(),original)
+
     def test_v3_metadata_upgrade_failure_preserves_logo_and_watch_history(self):
         with tempfile.TemporaryDirectory() as directory:
             shelf = SeriesShelf(Path(directory)/'shelf.json')

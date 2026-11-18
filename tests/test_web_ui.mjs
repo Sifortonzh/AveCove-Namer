@@ -17,6 +17,7 @@ class Element {
   setAttribute(name,value) { (this.attributes??={})[name]=String(value); }
   getAttribute(name) { return this.attributes?.[name]??null; }
   append(...children) { (this.children??=[]).push(...children); }
+  prepend(...children) { this.children=[...children,...(this.children||[])]; }
   removeChild(child) { this.children=(this.children||[]).filter(x=>x!==child); }
 }
 const element = selector => {

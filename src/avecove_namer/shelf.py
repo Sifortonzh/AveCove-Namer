@@ -99,10 +99,25 @@ class SeriesShelf:
                 if not ident.isdecimal() or not 0 < int(ident) < 100000000:
                     raise ValueError('无效的 TMDb 剧集编号')
                 action = payload.get('action')
-                if action not in ('favorite', 'queued', 'watching', 'progress', 'watched', 'delete', 'archive', 'restore'):
+                if action not in ('episodeFavorite', 'favorite', 'queued', 'watching', 'progress', 'watched', 'delete', 'archive', 'restore'):
                     raise ValueError('不支持的收藏操作')
                 row = dict(rows.get(ident, {'id': ident, 'favorite': False, 'watching': False}))
-                if action in ('delete', 'archive'):
+                if action == 'episodeFavorite':
+                    season, episode = payload.get('season'), payload.get('episode')
+                    if type(season) is not int or type(episode) is not int or not 0 <= season <= 999 or not 1 <= episode <= 9999:
+                        raise ValueError('收藏单集的季集号无效')
+                    if type(payload.get('enabled')) is not bool:
+                        raise ValueError('状态必须为布尔值')
+                    key = f'S{season:02d}E{episode:02d}'
+                    favorites = dict(row.get('episodeFavorites', {}))
+                    if payload['enabled']:
+                        favorites[key] = {'season':season, 'episode':episode, 'name':str(payload.get('name') or '')[:250], 'savedAt':int(time.time())}
+                        if not row.get('title'):
+                            row['title'] = str(payload.get('title') or '')[:250]
+                    else:
+                        favorites.pop(key, None)
+                    row['episodeFavorites'] = favorites
+                elif action in ('delete', 'archive'):
                     if payload.get('confirm') is not True:
                         raise ValueError('请确认归档剧集')
                     if ident in rows:
@@ -154,7 +169,7 @@ class SeriesShelf:
                     title = str(payload.get('title', '')).strip()[:250]
                     if title:
                         row['title'] = title
-                if row.get('favorite') or row.get('queued') or row.get('watching') or row.get('watched') or row.get('seasonCompletions'):
+                if row.get('favorite') or row.get('queued') or row.get('watching') or row.get('watched') or row.get('seasonCompletions') or row.get('episodeFavorites'):
                     row['updatedAt'] = int(time.time())
                     rows[ident] = row
                 else:

@@ -550,6 +550,10 @@ html[data-scene="night"] .saved-shows { --shelf-purple:#c0abff; --shelf-veil:#17
 
 /* Glass is a shared chrome material; dense result cards and posters stay clear. */
 .shelf-badges { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+.episode-favorites { margin:10px 0; }
+.episode-favorites summary { cursor:pointer; color:var(--accent-2); font-weight:650; }
+.episode-favorites .saved-episode { display:block; margin-top:7px; max-width:100%; white-space:normal; overflow-wrap:anywhere; text-align:left; }
+.episode-bookmark[aria-pressed="true"] { color:var(--accent-2); border-color:var(--accent-2); background:var(--surface-2); }
 .shelf-badge { padding:4px 8px; border-radius:7px; border:1px solid var(--line); background:var(--surface-2); color:var(--text); font-size:12px; line-height:1.4; }
 .shelf-badge.rating-mature { color:#a61e39; background:#ffe2e8; border-color:#edb0be; }
 .shelf-badge.rating-general { color:#14623d; background:#ddf5e6; border-color:#a9dabe; }

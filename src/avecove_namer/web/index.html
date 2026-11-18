@@ -13,7 +13,7 @@
       document.documentElement.dataset.scene = hour < 5 || hour >= 21 ? 'night' : hour < 11 ? 'morning' : hour < 17 ? 'day' : 'evening';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=0.7.15">
+  <link rel="stylesheet" href="styles.css?v=0.7.16">
 </head>
 <body>
   <div class="shell">
@@ -73,6 +73,7 @@
             <button type="button" class="mini-button" data-shelf-filter="queued" aria-pressed="false">🕒 待看</button>
             <button type="button" class="mini-button" data-shelf-filter="watching" aria-pressed="false">👀 在看</button>
             <button type="button" class="mini-button" data-shelf-filter="favorite" aria-pressed="false">🌟 收藏</button>
+            <button type="button" class="mini-button" data-shelf-filter="episodes" aria-pressed="false">🔖 单集</button>
             <button type="button" class="mini-button" data-shelf-filter="watched" aria-pressed="false">✅ 已看 · 时间线</button>
             <button type="button" class="mini-button" data-shelf-filter="archived" aria-pressed="false">📦 归档</button>
           </div>
@@ -148,6 +149,6 @@
     </form>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=0.7.15" defer></script>
+  <script src="app.js?v=0.7.16" defer></script>
 </body>
 </html>

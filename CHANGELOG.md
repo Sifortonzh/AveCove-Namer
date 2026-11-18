@@ -1,5 +1,9 @@
 # Changelog / 更新记录
 
+## 0.7.16 — 2026-11-18
+
+- Persist independent episode bookmarks; add compact bookmark controls and a dedicated Favorite filter with sorted episodes. Reopen bookmarked TMDb details without overwriting watch progress. Preserve existing favorites and timelines.
+
 ## 0.7.15 — 2026-11-12
 
 - Dotted brief filenames without year parentheses; genre-specific and additional classification badge colors.

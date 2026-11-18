@@ -161,7 +161,7 @@ function renderShelf(items) {
   const shelfItems = items.filter(onSeriesShelf);
   const archived = shelfFilter === 'archived';
   const pinScope='tmdb-shelf:'+shelfFilter, pinKey=item=>timeline?`${item.id}:${item.completedSeason??'all'}`:String(item.id);
-  const visible = pinOrder(pinScope,timeline ? watchedShelfItems(items) : archived ? items.filter(item => item.shelfHidden) : shelfItems.filter(item => shelfFilter === 'all' || item[shelfFilter]),pinKey);
+  const visible = pinOrder(pinScope,timeline ? watchedShelfItems(items) : shelfFilter === 'episodes' ? items.filter(item => Object.keys(item.episodeFavorites || {}).length) : archived ? items.filter(item => item.shelfHidden) : shelfItems.filter(item => shelfFilter === 'all' || item[shelfFilter]),pinKey);
   host.classList.toggle('shelf-timeline', timeline);
   $('#shelf-count').textContent = timeline ? `${visible.length} 条记录` : archived ? `${visible.length} 部已归档` : `${visible.length} / ${shelfItems.length}`;
   $$('[data-shelf-filter]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.shelfFilter === shelfFilter)));
@@ -221,6 +221,17 @@ function renderShelf(items) {
     actions.append(pinButton(pinScope,pinKey(item),()=>renderShelf([...savedSeries.values()])));
     remove.hidden = timeline;
     content.append(title, translated, meta, genre, counts, progress);
+    const favorites = Object.entries(item.episodeFavorites || {}).sort((a,b) => a[1].season - b[1].season || a[1].episode - b[1].episode);
+    if (favorites.length) {
+      const list = document.createElement('details'); list.className = 'episode-favorites'; list.open = shelfFilter === 'episodes';
+      const summary = document.createElement('summary'); summary.textContent = `🔖 ${favorites.length}`; summary.setAttribute('aria-label', `${favorites.length} 个收藏单集`); list.append(summary);
+      for (const [code, episode] of favorites) {
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'mini-button saved-episode';
+        button.textContent = `${code}${episode.name ? ' · ' + episode.name : ''}`;
+        button.onclick = () => openEpisodeDialog(item.id, name, episode.season, episode.episode); list.append(button);
+      }
+      content.append(list);
+    }
     if (timeline || item.watched || Object.keys(item.seasonCompletions || {}).length) {
       const date = document.createElement('button'); date.type = 'button'; date.className = 'shelf-watched-date';
       const firstSeason = Object.keys(item.seasonCompletions || {})[0];
@@ -490,24 +501,27 @@ function renderSearch(results, kind) {
 }
 
 let episodeRequest = 0;
-function openEpisodeDialog(id, title) {
+function openEpisodeDialog(id, title, season, episode) {
   episodeRequest++;
   const dialog = $('#episode-dialog');
   dialog.dataset.seriesId = id;
+  dialog.dataset.seriesTitle = title || '';
+  dialog.dataset.bookmarkView = String(episode !== undefined);
   $('#episode-series').textContent = title ? `${title} · TMDb ${id}` : `TMDb ${id}`;
   $('#episode-tmdb-link').href = `https://www.themoviedb.org/tv/${encodeURIComponent(id)}`;
   const saved = savedSeries.get(String(id));
-  $('#episode-season').value = saved?.season ?? '';
-  $('#episode-number').value = saved?.episode ?? '';
+  $('#episode-season').value = season ?? saved?.season ?? '';
+  $('#episode-number').value = episode ?? saved?.episode ?? '';
   $('#episode-result').replaceChildren();
   $('#episode-submit').disabled = false;
   $('#episode-submit').textContent = '读取单集';
   dialog.showModal();
   $('#episode-season').focus();
+  if (episode !== undefined) readEpisode({preventDefault() {}});
 }
 $('#episode-close').addEventListener('click', () => $('#episode-dialog').close());
 $('#episode-dialog').addEventListener('close', () => { episodeRequest++; });
-$('#episode-form').addEventListener('submit', async event => {
+async function readEpisode(event) {
   event.preventDefault();
   const seasonInput = $('#episode-season');
   const episodeInput = $('#episode-number');
@@ -535,9 +549,25 @@ $('#episode-form').addEventListener('submit', async event => {
     target.className = 'episode-detail';
     target.innerHTML = `<h3>${escapeHtml(data.code)} · ${escapeHtml(data.name || data.translated_name || '暂无标题')}</h3>${data.translated_name && data.translated_name !== data.name ? `<p class="meta">译名：${escapeHtml(data.translated_name)}</p>` : ''}<p class="meta">首播 ${escapeHtml(data.air_date || '未知')}${data.runtime ? ` · ${Number(data.runtime)} 分钟` : ''} · ${data.vote_count ? `TMDb ${Number(data.rating).toFixed(1)}（${Number(data.vote_count)} 人评分）` : '暂无评分'} · 源语言 ${escapeHtml(data.original_language)}</p><p class="episode-overview">${escapeHtml(data.overview || 'TMDb 暂无该集简介')}</p>${data.original_overview && data.original_overview !== data.overview ? `<details><summary>源语言简介</summary><p class="episode-overview">${escapeHtml(data.original_overview)}</p></details>` : ''}<div class="actions"><button class="mini-button" id="episode-copy-title" type="button">复制源单集名</button><button class="mini-button" id="episode-copy-overview" type="button">复制简介</button><a class="mini-button" href="${escapeHtml(data.detail_url)}" target="_blank" rel="noopener noreferrer">TMDb 单集详情 ↗</a></div>`;
     const copyName = episodeCopyTitle(episodeNumber, data.name || data.translated_name);
+    const seriesId = String($('#episode-dialog').dataset.seriesId);
+    const mark = document.createElement('button'); mark.type = 'button'; mark.className = 'mini-button episode-bookmark';
+    const paint = () => {
+      const enabled = Boolean(savedSeries.get(seriesId)?.episodeFavorites?.[code]);
+      mark.textContent = enabled ? '🔖' : '🔖＋'; mark.setAttribute('aria-pressed', String(enabled));
+      mark.setAttribute('aria-label', enabled ? '取消收藏本集' : '收藏本集'); mark.title = mark.getAttribute('aria-label');
+    };
+    paint();
+    mark.onclick = async () => {
+      mark.disabled = true;
+      try {
+        const result = await api('/api/tmdb/shelf', {id:seriesId, action:'episodeFavorite', season:Number(season), episode:Number(episode), enabled:!savedSeries.get(seriesId)?.episodeFavorites?.[code], name:data.name || data.translated_name || '', title:$('#episode-dialog').dataset.seriesTitle});
+        renderShelf(result.items); paint();
+      } catch (error) { toast(error.message, true); } finally { mark.disabled = false; }
+    };
+    target.querySelector('.actions').prepend(mark);
     $('#episode-copy-title').textContent = `复制 ${copyName}`;
     $('#episode-copy-title').addEventListener('click', async () => { await navigator.clipboard.writeText(copyName); toast('集号与源单集名已复制'); });
-    if (savedSeries.has($('#episode-dialog').dataset.seriesId)) {
+    if ($('#episode-dialog').dataset.bookmarkView !== 'true' && savedSeries.has($('#episode-dialog').dataset.seriesId)) {
       api('/api/tmdb/shelf', {id:$('#episode-dialog').dataset.seriesId, action:'progress', season:Number(season), episode:Number(episode)}).then(data => renderShelf(data.items)).catch(() => toast('单集已读取，但上次查询位置保存失败', true));
     }
     $('#episode-copy-overview').addEventListener('click', async () => { await navigator.clipboard.writeText(data.overview || ''); toast('简介已复制'); });
@@ -546,7 +576,8 @@ $('#episode-form').addEventListener('submit', async event => {
   } finally {
     if (request === episodeRequest) { button.disabled = false; button.textContent = '读取单集'; }
   }
-});
+}
+$('#episode-form').addEventListener('submit', readEpisode);
 
 let artworkRequest = 0;
 function hideArtwork() {
