@@ -35,7 +35,7 @@ TMDB_SUFFIX_RE = re.compile(r"\s*\{tmdb\s*(?:=|-)\s*\d+\}\s*$", re.IGNORECASE)
 TECHNICAL_START_RE = re.compile(
     r"(?i)(?:^|[ ._-])(?:"
     r"2160p|1080p|1080i|720p|576p|480p|4k|uhd|bluray|blu-ray|bdrip|brrip|"
-    r"remux|web-dl|webdl|webrip|hdtv|dvdrip|dvd5|dvd9|ntsc|pal|hdr10\+?|hdr|sdr|dolby[ ._-]*vision|dv|"
+    r"remux|web-dl|webdl|webrip|hdtv|dvdrip|dvd5|dvd9|dvd|ntsc|pal|hdr10\+?|hdr|sdr|dolby[ ._-]*vision|dv|"
     r"x26[45]|h\.?26[45]|hevc|av1|avc|dts(?:-hd)?|truehd|atmos|ddp?\d(?:\.\d)?|"
     r"aac|flac|opus|10bit|8bit"
     r")(?:$|[ ._-])"
@@ -51,6 +51,7 @@ CANONICAL_TECH = {
     "web-dl": "WEB-DL",
     "webrip": "WEBRip",
     "remux": "REMUX",
+    "dvd": "DVD",
     "hdr": "HDR",
     "hdr10": "HDR10",
     "hdr10+": "HDR10+",

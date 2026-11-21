@@ -180,6 +180,9 @@ def make_plan(
             parsed = replace(parsed, title=context_title, year=context_year)
         resolved_title = title_override or context_title or parsed.title
         resolved_year = year_override or context_year or parsed.year
+        if parsed.kind == "movie" and not resolved_title:
+            plan.skipped.append({"path": entry.path, "reason": "movie_title_missing"})
+            continue
         if parsed.kind in {"episode", "disc"} and policy.include_series_year and not resolved_year:
             plan.skipped.append({"path": entry.path, "reason": "series_year_missing"})
             continue

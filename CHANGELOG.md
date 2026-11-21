@@ -1,5 +1,9 @@
 # Changelog / 更新记录
 
+## 0.7.18 — 2026-11-21
+
+- Preserve bare DVD version labels in rename plans, using the movie folder for title and year when available.
+
 ## 0.7.17 — 2026-11-21
 
 - Hide the generic TMDb Scripted badge in Favorite; retain genres, age ratings and other series types.

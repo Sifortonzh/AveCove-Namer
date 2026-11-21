@@ -7,6 +7,14 @@ from avecove_namer.planner import _season_from_folder, make_plan, normalized_sea
 
 
 class PlannerTests(unittest.TestCase):
+    def test_dvd_only_movie_uses_parent_title_and_preserves_version(self):
+        root = "/Movies/Example (2000)"
+        plan = make_plan([Entry(root + "/dvd.mp4")], root, "litepan", NamingPolicy(), media_kind="movie")
+        self.assertEqual(plan.operations[0].target, root + "/Example.2000.DVD.mp4")
+        unknown = make_plan([Entry("/Inbox/DVD.mp4")], "/Inbox", "litepan", NamingPolicy(), media_kind="movie")
+        self.assertFalse(unknown.operations)
+        self.assertEqual(unknown.skipped[0]["reason"], "movie_title_missing")
+
     def test_numeric_movie_uses_parent_not_digits_as_year(self):
         plan = make_plan([Entry("/Movies/Example (2000)/2024.mp4")],
                          "/Movies/Example (2000)", "litepan", NamingPolicy(), media_kind="movie")

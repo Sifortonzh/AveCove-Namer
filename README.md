@@ -4,7 +4,7 @@ Reviewable cloud media naming, original-language TMDb metadata, and a personal s
 
 [简体中文](README.zh-CN.md) · [Release workflow](docs/releases.md) · [Changelog](CHANGELOG.md)
 
-## Current release: 0.7.17
+## Current release: 0.7.18
 
 - Bookmark individual episodes with 🔖 in the episode dialog. Favorite's episode filter includes saved episodes even after whole-series completion or archive. Opening a saved episode fetches its TMDb details without changing watch progress. Bookmarks persist on the same server, independently of whole-series Favorite and timeline records; toggle the same icon to remove one.
 
