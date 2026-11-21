@@ -60,6 +60,8 @@ assert.equal(vm.runInContext('ratingTone("16+")',context),'restricted');
 assert.equal(vm.runInContext('genreTone("Sci-Fi & Fantasy")',context),'fantasy');
 assert.equal(vm.runInContext('genreTone("Drama")',context),'drama');
 assert.equal(vm.runInContext('genreTone("犯罪")',context),'mystery');
+assert.equal(vm.runInContext('shelfGenreLabels({genres:["Drama","Crime"],series_type:" Scripted "}).join(",")',context),'Drama,Crime');
+assert.equal(vm.runInContext('shelfGenreLabels({genres:["Comedy"],series_type:"Miniseries"}).join(",")',context),'Comedy,Miniseries');
 vm.runInContext('pinTest=pinButton("namer","/115/show",()=>{});pinTest.onclick({preventDefault(){},stopPropagation(){}})',context);
 assert.equal(vm.runInContext('pinned("namer","/115/show")',context),true);
 assert.equal(vm.runInContext('pinned("tmdb-search","/115/show")',context),false);

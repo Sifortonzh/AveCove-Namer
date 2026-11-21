@@ -36,6 +36,10 @@ function ratingTone(rating) {
   if (['15','15+','16','16+','MA15+'].includes(String(rating).toUpperCase())) return 'restricted';
   return 'neutral';
 }
+function shelfGenreLabels(item) {
+  const type = item.series_type?.trim();
+  return [...(item.genres || []), ...(type && type.toLowerCase() !== 'scripted' ? [type] : [])];
+}
 function genreTone(label) {
   const value = String(label).toLowerCase();
   if (/sci-fi|fantasy|科幻|奇幻|ファンタジー|판타지/.test(value)) return 'fantasy';
@@ -199,7 +203,7 @@ function renderShelf(items) {
       const badge = document.createElement('span'); badge.className = 'shelf-badge rating-' + ratingTone(item.certification);
       badge.textContent = `${item.certificationCountry || '地区未标注'} · ${item.certification}`; genre.append(badge);
     }
-    for (const label of [...(item.genres || []), ...(item.series_type ? [item.series_type] : [])]) {
+    for (const label of shelfGenreLabels(item)) {
       const badge = document.createElement('span'); badge.className = 'shelf-badge genre-' + genreTone(label); badge.textContent = label; genre.append(badge);
     }
     const counts = document.createElement('p'); counts.className = 'shelf-genre'; counts.textContent = `${Number.isInteger(item.season_count) ? `${item.season_count} 季` : '季数待补充'}${Number.isInteger(item.episode_count) ? ` · 正式集 ${item.episode_count} 集` : ''}${item.has_specials ? ' · 另含特别篇' : ''}`;

@@ -1,5 +1,9 @@
 # Changelog / 更新记录
 
+## 0.7.17 — 2026-11-21
+
+- Hide the generic TMDb Scripted badge in Favorite; retain genres, age ratings and other series types.
+
 ## 0.7.16 — 2026-11-18
 
 - Persist independent episode bookmarks; add compact bookmark controls and a dedicated Favorite filter with sorted episodes. Reopen bookmarked TMDb details without overwriting watch progress. Preserve existing favorites and timelines.
